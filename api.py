@@ -55,6 +55,118 @@ ritu_names = [
 months = ['Ashwin', 'Kartika', 'Margashirsha', 'Pausha', 'Magha', 'Phalguna', 
           'Chaitra', 'Vaishakha', 'Jyeshtha', 'Ashadha', 'Shravana', 'Bhadrapada']
 
+
+festival_mapping = {
+    'Makar Sankranti': {
+        'fixed_date': 'January 14'  # Based on the solar calendar
+    },
+    'Vasant Panchami': {
+        'tithi': 'पञ्चमी',
+        'month': 'Magha',
+        'paksha': 'Shukla Paksha'
+    },
+    'Ratha Saptami': {
+        'tithi': 'सप्तमी',
+        'month': 'Magha',
+        'paksha': 'Shukla Paksha'
+    },
+    'Maha Shivaratri': {
+        'tithi': 'चतुर्दशी',
+        'month': 'Phalguna',
+        'paksha': 'Krishna Paksha'
+    },
+    'Holi': {
+        'tithi': 'पूर्णिमा',
+        'month': 'Phalguna',
+        'paksha': 'Shukla Paksha'
+    },
+    'Ram Navami': {
+        'tithi': 'नवमी',
+        'month': 'Chaitra',
+        'paksha': 'Shukla Paksha'
+    },
+    'Hanuman Jayanti': {
+        'tithi': 'पूर्णिमा',
+        'month': 'Chaitra',
+        'paksha': 'Shukla Paksha'
+    },
+    'Akshaya Tritiya': {
+        'tithi': 'तृतीया',
+        'month': 'Vaishakha',
+        'paksha': 'Shukla Paksha'
+    },
+    'Ganga Dussehra': {
+        'tithi': 'दशमी',
+        'month': 'Jyeshtha',
+        'paksha': 'Shukla Paksha'
+    },
+    'Guru Purnima': {
+        'tithi': 'पूर्णिमा',
+        'month': 'Ashadha',
+        'paksha': 'Shukla Paksha'
+    },
+    'Nag Panchami': {
+        'tithi': 'पञ्चमी',
+        'month': 'Shravana',
+        'paksha': 'Shukla Paksha'
+    },
+    'Raksha Bandhan': {
+        'tithi': 'पूर्णिमा',
+        'month': 'Shravana',
+        'paksha': 'Shukla Paksha'
+    },
+    'Krishna Janmashtami': {
+        'tithi': 'अष्टमी',
+        'month': 'Bhadrapada',
+        'paksha': 'Krishna Paksha'
+    },
+    'Ganesh Chaturthi': {
+        'tithi': 'चतुर्थी',
+        'month': 'Bhadrapada',
+        'paksha': 'Shukla Paksha'
+    },
+    'Sharad Purnima (Kojagrat Brata)': {
+        'tithi': 'पूर्णिमा',
+        'month': 'Ashwin',
+        'paksha': 'Shukla Paksha'
+    },
+    'Navratri Begins': {
+        'tithi': 'प्रतिपदा',
+        'month': 'Ashwin',
+        'paksha': 'Shukla Paksha'
+    },
+    'Dussehra (Vijayadashami)': {
+        'tithi': 'दशमी',
+        'month': 'Ashwin',
+        'paksha': 'Shukla Paksha'
+    },
+    'Karva Chauth': {
+        'tithi': 'चतुर्थी',
+        'month': 'Kartik',
+        'paksha': 'Krishna Paksha'
+    },
+    'Diwali': {
+        'tithi': 'अमावस्या',
+        'month': 'Kartik',
+        'paksha': 'Krishna Paksha'
+    },
+    'Bhai Dooj': {
+        'tithi': 'द्वितीया',
+        'month': 'Kartik',
+        'paksha': 'Shukla Paksha'
+    },
+    'Mahalaya Amavasya': {
+        'tithi': 'अमावस्या',
+        'month': 'Ashwin',
+        'paksha': 'Krishna Paksha'
+    },
+    'Kartika Purnima': {
+        'tithi': 'पूर्णिमा',
+        'month': 'Kartik',
+        'paksha': 'Shukla Paksha'
+    }
+}
+
 def tropical_to_sidereal(tropical_position):
     return (tropical_position - AYANAMSA) % 360
 
@@ -161,6 +273,56 @@ def calculate_ritu(sun_sidereal_longitude):
     ritu_index = int(sun_sidereal_longitude // 60)
     return ritu_names[ritu_index % 6]
 
+def calculate_brahma_muhurat(sunrise):
+    """
+    Calculate the Brahma Muhurat based on the sunrise time.
+    Brahma Muhurat starts 1 hour and 36 minutes (96 minutes) before sunrise and lasts for 48 minutes.
+    
+    :param sunrise: The local sunrise time as a datetime object.
+    :return: Start and end time of Brahma Muhurat.
+    """
+    # Brahma Muhurat starts 96 minutes before sunrise
+    brahma_muhurat_start = sunrise - timedelta(minutes=96)
+    
+    # Brahma Muhurat lasts for 48 minutes
+    brahma_muhurat_end = brahma_muhurat_start + timedelta(minutes=48)
+    
+    return brahma_muhurat_start, brahma_muhurat_end
+
+
+def get_festival_for_day(tithi_name, paksha, lunar_month):
+    """
+    Given the Tithi, Paksha, and Lunar Month, return the festival for that day if it exists.
+    
+    :param tithi_name: Name of the current Tithi (e.g., 'पूर्णिमा')
+    :param paksha: Current Paksha (e.g., 'Shukla Paksha')
+    :param lunar_month: Current lunar month (e.g., 'Ashwin')
+    :return: Name of the festival if one is found, otherwise None.
+    """
+    # Check for a festival based on the tithi, paksha, and month
+    for festival, details in festival_mapping.items():
+        if 'fixed_date' in details:
+            continue  # Skip solar date festivals (e.g., Makar Sankranti)
+        if (details['tithi'] == tithi_name and details['paksha'] == paksha and details['month'] == lunar_month):
+            return festival
+    return None
+
+def check_fixed_festivals(current_date):
+    """
+    Check if the current date matches any fixed-date festivals like Makar Sankranti.
+    
+    :param current_date: Today's date as a datetime object
+    :return: Festival name if found, otherwise None.
+    """
+    for festival, details in festival_mapping.items():
+        if 'fixed_date' in details:
+            festival_date = datetime.strptime(details['fixed_date'], '%B %d')
+            if current_date.month == festival_date.month and current_date.day == festival_date.day:
+                return festival
+    return None
+
+
+
 
 @app.route('/astrology', methods=['POST'])
 def astrology_api_view():
@@ -253,6 +415,23 @@ def astrology_api_view():
         # Day duration
         day_duration = (sunset - sunrise).seconds / 3600  # Duration in hours
 
+        # Calculate Brahma Muhurat using the sunrise time
+        brahma_muhurat_start, brahma_muhurat_end = calculate_brahma_muhurat(sunrise)
+
+        # Check for fixed-date festivals (e.g., Makar Sankranti)
+        today_date = datetime.now()
+        fixed_festival_today = check_fixed_festivals(today_date)
+
+        # Calculate the lunar month and check for lunar-based festivals
+        lunar_month, _ = calculate_amanta_purnimanta_month(tithi_number, paksha, days_since_new_moon, days_since_full_moon)
+
+        # Get the festival for the day based on lunar calculations
+        festival_today = get_festival_for_day(tithi_name, paksha, lunar_month)
+
+        # Final festival result (if a fixed festival is found, it takes precedence)
+        if fixed_festival_today:
+            festival_today = fixed_festival_today
+
         # Prepare response data
         response_data = {
             'tithi': tithi_name,
@@ -284,7 +463,10 @@ def astrology_api_view():
             'yamaganda_end': yamaganda_end.strftime('%I:%M:%S %p'),
             'abhijit_start': abhijit_start.strftime('%I:%M:%S %p'),
              'abhijit_end': abhijit_end.strftime('%I:%M:%S %p'),
+             'brahma_start': brahma_muhurat_start.strftime('%I:%M:%S %p'),
+            'brahma_end': brahma_muhurat_end.strftime('%I:%M:%S %p'),
              'time_zone':timezone_str,
+             'festival_today': festival_today if festival_today else tithi_name
         }
 
         return jsonify(response_data)
@@ -292,6 +474,10 @@ def astrology_api_view():
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
-# Run the Flask app
+# # Run the Flask app live
+# if __name__ == '__main__':
+#     app.run(debug=True)
+
+    # Run the Flask app local
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(port=8001 ,debug=True)
