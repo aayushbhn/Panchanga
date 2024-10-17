@@ -4,6 +4,7 @@ import pytz
 from skyfield.api import load, Topos
 from skyfield.almanac import find_discrete, sunrise_sunset, find_risings, find_settings, moon_phases
 from skyfield.framelib import ecliptic_frame
+from timezonefinder import TimezoneFinder
 
 app = Flask(__name__)
 
@@ -170,7 +171,18 @@ def astrology_api_view():
         # Extract latitude, longitude, and timezone from the request
         latitude = float(data.get('latitude'))
         longitude = float(data.get('longitude'))
-        timezone_str = data.get('timezone')
+
+        # Validate latitude and longitude
+        if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+            return jsonify({'error': 'Invalid latitude or longitude.'}), 400
+
+        # Use TimezoneFinder to get the timezone from latitude and longitude
+        tf = TimezoneFinder()
+        timezone_str = tf.timezone_at(lng=longitude, lat=latitude)
+
+        # Handle cases where timezone might not be found
+        if timezone_str is None:
+            return jsonify({'error': 'Timezone could not be determined from the provided coordinates.'}), 400
 
         # Load ephemeris data
         ts = load.timescale()
@@ -272,6 +284,7 @@ def astrology_api_view():
             'yamaganda_end': yamaganda_end.strftime('%I:%M:%S %p'),
             'abhijit_start': abhijit_start.strftime('%I:%M:%S %p'),
              'abhijit_end': abhijit_end.strftime('%I:%M:%S %p'),
+             'time_zone':timezone_str,
         }
 
         return jsonify(response_data)
@@ -281,4 +294,4 @@ def astrology_api_view():
 
 # Run the Flask app
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(port=8000 ,debug=True)
