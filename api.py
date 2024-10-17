@@ -670,6 +670,20 @@ def astrology_api_view():
             # Call get_vrata_for_day to check for any Vrata today
         vrata_today = get_vrata_for_day(tithi_name, paksha, now.strftime('%A'))
 
+        
+        # Subh (auspicious) Muhurats
+        subh_muhurat = [
+            {'abhijit': [abhijit_start.strftime('%I:%M:%S %p'), abhijit_end.strftime('%I:%M:%S %p')]},
+            {'brahma': [brahma_muhurat_start.strftime('%I:%M:%S %p'), brahma_muhurat_end.strftime('%I:%M:%S %p')]}
+        ]
+        
+        # Asubh (inauspicious) Muhurats
+        asubh_muhurat = [
+            {'rahu': [rahu_start.strftime('%I:%M:%S %p'), rahu_end.strftime('%I:%M:%S %p')]},
+            {'gulika': [gulika_start.strftime('%I:%M:%S %p'), gulika_end.strftime('%I:%M:%S %p')]},
+            {'yamaganda': [yamaganda_start.strftime('%I:%M:%S %p'), yamaganda_end.strftime('%I:%M:%S %p')]}
+        ]
+
         # Prepare response data
         response_data = {
             'tithi': tithi_name,
@@ -693,19 +707,21 @@ def astrology_api_view():
             'sunset': sunset.strftime('%I:%M:%S %p'),
             'moonrise': moonrise.strftime('%I:%M:%S %p') if moonrise else 'N/A',
             'moonset': moonset.strftime('%I:%M:%S %p') if moonset else 'N/A',
-            'rahu_start': rahu_start.strftime('%I:%M:%S %p'),
-            'rahu_end': rahu_end.strftime('%I:%M:%S %p'),
-            'gulika_start': gulika_start.strftime('%I:%M:%S %p'),
-            'gulika_end': gulika_end.strftime('%I:%M:%S %p'),
-            'yamaganda_start': yamaganda_start.strftime('%I:%M:%S %p'),
-            'yamaganda_end': yamaganda_end.strftime('%I:%M:%S %p'),
-            'abhijit_start': abhijit_start.strftime('%I:%M:%S %p'),
-             'abhijit_end': abhijit_end.strftime('%I:%M:%S %p'),
-             'brahma_start': brahma_muhurat_start.strftime('%I:%M:%S %p'),
-            'brahma_end': brahma_muhurat_end.strftime('%I:%M:%S %p'),
+            # 'rahu_start': rahu_start.strftime('%I:%M:%S %p'),
+            # 'rahu_end': rahu_end.strftime('%I:%M:%S %p'),
+            # 'gulika_start': gulika_start.strftime('%I:%M:%S %p'),
+            # 'gulika_end': gulika_end.strftime('%I:%M:%S %p'),
+            # 'yamaganda_start': yamaganda_start.strftime('%I:%M:%S %p'),
+            # 'yamaganda_end': yamaganda_end.strftime('%I:%M:%S %p'),
+            # 'abhijit_start': abhijit_start.strftime('%I:%M:%S %p'),
+            #  'abhijit_end': abhijit_end.strftime('%I:%M:%S %p'),
+            #  'brahma_start': brahma_muhurat_start.strftime('%I:%M:%S %p'),
+            # 'brahma_end': brahma_muhurat_end.strftime('%I:%M:%S %p'),
              'time_zone':timezone_str,
              'festival_today': festival_today if festival_today else 'None',
-             'vrata_today': vrata_today if vrata_today else 'None',  # Add the vrata_today field    
+             'vrata_today': vrata_today if vrata_today else 'None',  # Add the vrata_today field 
+             'subh_muhurat': subh_muhurat,
+            'asubh_muhurat': asubh_muhurat
         }
 
         return jsonify(response_data)
