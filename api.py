@@ -466,7 +466,7 @@ def astrology_api_view():
              'brahma_start': brahma_muhurat_start.strftime('%I:%M:%S %p'),
             'brahma_end': brahma_muhurat_end.strftime('%I:%M:%S %p'),
              'time_zone':timezone_str,
-             'festival_today': festival_today if festival_today else tithi_name
+             'festival_today': festival_today if festival_today else 'None'
         }
 
         return jsonify(response_data)
