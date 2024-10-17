@@ -60,6 +60,9 @@ festival_mapping = {
     'Makar Sankranti': {
         'fixed_date': 'January 14'  # Based on the solar calendar
     },
+    'Pongal': {
+        'fixed_date': 'January 15',  # Primarily celebrated in Tamil Nadu
+    },
     'Vasant Panchami': {
         'tithi': 'पञ्चमी',
         'month': 'Magha',
@@ -80,6 +83,23 @@ festival_mapping = {
         'month': 'Phalguna',
         'paksha': 'Shukla Paksha'
     },
+    'Chaitra Navratri Begins': {
+        'tithi': 'प्रतिपदा',
+        'month': 'Chaitra',
+        'paksha': 'Shukla Paksha'
+    },
+    'Gudi Padwa': {
+        'tithi': 'प्रतिपदा',
+        'month': 'Chaitra',
+        'paksha': 'Shukla Paksha',
+        'region': 'Maharashtra'
+    },
+    'Ugadi': {
+        'tithi': 'प्रतिपदा',
+        'month': 'Chaitra',
+        'paksha': 'Shukla Paksha',
+        'region': 'Andhra Pradesh, Karnataka'
+    },
     'Ram Navami': {
         'tithi': 'नवमी',
         'month': 'Chaitra',
@@ -94,6 +114,16 @@ festival_mapping = {
         'tithi': 'तृतीया',
         'month': 'Vaishakha',
         'paksha': 'Shukla Paksha'
+    },
+    'Narasimha Jayanti': {
+        'tithi': 'चतुर्दशी',
+        'month': 'Vaishakha',
+        'paksha': 'Shukla Paksha'
+    },
+    'Vat Savitri Vrat': {
+        'tithi': 'अमावस्या',
+        'month': 'Jyeshtha',
+        'paksha': 'Krishna Paksha'
     },
     'Ganga Dussehra': {
         'tithi': 'दशमी',
@@ -125,6 +155,16 @@ festival_mapping = {
         'month': 'Bhadrapada',
         'paksha': 'Shukla Paksha'
     },
+    'Radha Ashtami': {
+        'tithi': 'अष्टमी',
+        'month': 'Bhadrapada',
+        'paksha': 'Shukla Paksha'
+    },
+    'Hartalika Teej': {
+        'tithi': 'तृतीया',
+        'month': 'Bhadrapada',
+        'paksha': 'Shukla Paksha'
+    },
     'Sharad Purnima (Kojagrat Brata)': {
         'tithi': 'पूर्णिमा',
         'month': 'Ashwin',
@@ -135,6 +175,11 @@ festival_mapping = {
         'month': 'Ashwin',
         'paksha': 'Shukla Paksha'
     },
+    'Durga Ashtami': {
+        'tithi': 'अष्टमी',
+        'month': 'Ashwin',
+        'paksha': 'Shukla Paksha'
+    },
     'Dussehra (Vijayadashami)': {
         'tithi': 'दशमी',
         'month': 'Ashwin',
@@ -142,6 +187,16 @@ festival_mapping = {
     },
     'Karva Chauth': {
         'tithi': 'चतुर्थी',
+        'month': 'Kartik',
+        'paksha': 'Krishna Paksha'
+    },
+    'Dhanteras': {
+        'tithi': 'त्रयोदशी',
+        'month': 'Kartik',
+        'paksha': 'Krishna Paksha'
+    },
+    'Naraka Chaturdashi': {
+        'tithi': 'चतुर्दशी',
         'month': 'Kartik',
         'paksha': 'Krishna Paksha'
     },
@@ -164,8 +219,166 @@ festival_mapping = {
         'tithi': 'पूर्णिमा',
         'month': 'Kartik',
         'paksha': 'Shukla Paksha'
-    }
+    },
+    'Tulsi Vivah': {
+        'tithi': 'एकादशी',
+        'month': 'Kartik',
+        'paksha': 'Shukla Paksha'
+    },
+    
+    
 }
+
+
+vrata_mapping = {
+    # Tithi-based Vratas (Observed on specific lunar days)
+    'Ekadashi': {
+        'tithi': 'एकादशी',
+        'paksha': 'Both',
+        'deity': 'Lord Vishnu',
+        'significance': 'Fasting for spiritual growth, Lord Vishnu worship',
+    },
+    'Pradosh Vrat': {
+        'tithi': 'त्रयोदशी',
+        'paksha': 'Both',
+        'deity': 'Lord Shiva',
+        'significance': 'Fasting for happiness, prosperity, and well-being',
+    },
+    'Sankashti Chaturthi': {
+        'tithi': 'चतुर्थी',
+        'paksha': 'Krishna Paksha',
+        'deity': 'Lord Ganesha',
+        'significance': 'Fasting for removing obstacles and gaining wisdom',
+    },
+    'Vinayaka Chaturthi': {
+        'tithi': 'चतुर्थी',
+        'paksha': 'Shukla Paksha',
+        'deity': 'Lord Ganesha',
+        'significance': 'Fasting for wisdom, prosperity, and success',
+    },
+    'Purnima Vrat': {
+        'tithi': 'पूर्णिमा',
+        'paksha': 'Shukla Paksha',
+        'deity': 'Lord Vishnu, Goddess Lakshmi',
+        'significance': 'Fasting for wealth, health, and prosperity',
+    },
+    'Amavasya Vrat': {
+        'tithi': 'अमावस्या',
+        'paksha': 'Krishna Paksha',
+        'deity': 'Pitru Devatas (Ancestors)',
+        'significance': 'Fasting for the peace of ancestors\' souls',
+    },
+    'Masik Shivaratri': {
+        'tithi': 'चतुर्दशी',
+        'paksha': 'Krishna Paksha',
+        'deity': 'Lord Shiva',
+        'significance': 'Fasting for the blessings of Lord Shiva',
+    },
+    'Kalashtami': {
+        'tithi': 'अष्टमी',
+        'paksha': 'Krishna Paksha',
+        'deity': 'Lord Bhairava',
+        'significance': 'Fasting for protection and the blessings of Lord Bhairava',
+    },
+    'Ahoi Ashtami': {
+        'tithi': 'अष्टमी',
+        'month': 'Kartik',
+        'paksha': 'Krishna Paksha',
+        'deity': 'Goddess Ahoi',
+        'significance': 'Fasting for the well-being of sons',
+    },
+    'Karva Chauth': {
+        'tithi': 'चतुर्थी',
+        'month': 'Kartik',
+        'paksha': 'Krishna Paksha',
+        'deity': 'Lord Shiva, Parvati',
+        'significance': 'Fasting for the long life and well-being of husbands',
+    },
+    'Nirjala Ekadashi': {
+        'tithi': 'एकादशी',
+        'month': 'Jyeshtha',
+        'paksha': 'Shukla Paksha',
+        'deity': 'Lord Vishnu',
+        'significance': 'Fasting without water for purification and blessings',
+    },
+    'Vaikunta Ekadashi': {
+        'tithi': 'एकादशी',
+        'month': 'Margashirsha',
+        'paksha': 'Shukla Paksha',
+        'deity': 'Lord Vishnu',
+        'significance': 'Fasting to attain Vaikunta (abode of Vishnu)',
+    },
+    'Devshayani Ekadashi': {
+        'tithi': 'एकादशी',
+        'month': 'Ashadha',
+        'paksha': 'Shukla Paksha',
+        'deity': 'Lord Vishnu',
+        'significance': 'Marks the beginning of Lord Vishnu\'s slumber (Chaturmas)',
+    },
+    'Rishi Panchami': {
+        'tithi': 'पञ्चमी',
+        'month': 'Bhadrapada',
+        'paksha': 'Shukla Paksha',
+        'deity': 'Saptarishi (Seven Sages)',
+        'significance': 'Fasting for purification from sins and menstrual impurity',
+    },
+    'Savitri Vrat': {
+        'tithi': 'अमावस्या',
+        'month': 'Jyeshtha',
+        'paksha': 'Krishna Paksha',
+        'deity': 'Goddess Savitri',
+        'significance': 'Fasting for the long life and well-being of the husband',
+    },
+
+    # Day-based Vratas (Observed on specific days of the week)
+    'Somvar Vrat': {
+        'day_of_week': 'Monday',
+        'deity': 'Lord Shiva',
+        'significance': 'For marital happiness, spiritual growth, and fulfillment of desires',
+    },
+    'Shani Vrat': {
+        'day_of_week': 'Saturday',
+        'deity': 'Lord Shani (Saturn)',
+        'significance': 'For relief from obstacles and the negative effects of Shani',
+    },
+    'Mangala Gauri Vrat': {
+        'day_of_week': 'Tuesday',
+        'month': 'Shravana',
+        'paksha': 'Shukla Paksha',
+        'deity': 'Goddess Parvati',
+        'significance': 'For the happiness and prosperity of the family',
+    },
+    'Guruvar Vrat': {
+        'day_of_week': 'Thursday',
+        'deity': 'Brihaspati (Jupiter)',
+        'significance': 'For prosperity, education, and spiritual progress',
+    },
+    'Vaibhav Lakshmi Vrat': {
+        'day_of_week': 'Friday',
+        'deity': 'Goddess Lakshmi',
+        'significance': 'For wealth, prosperity, and success in life',
+    },
+    'Rohini Vrat': {
+        'nakshatra': 'Rohini',
+        'month': 'Every Month',
+        'paksha': 'All',
+        'deity': 'Lord Krishna',
+        'significance': 'Fasting for the prosperity and well-being of the family',
+    },
+
+    # Solar and Seasonal Festivals (Fixed Dates)
+    'Makar Sankranti': {
+        'fixed_date': 'January 14',
+        'significance': 'Sun enters Capricorn, marks the harvest season',
+    },
+    'Pongal': {
+        'fixed_date': 'January 15',
+        'region': 'Tamil Nadu',
+        'significance': 'Harvest festival celebrated in South India',
+    },
+}
+
+
 
 def tropical_to_sidereal(tropical_position):
     return (tropical_position - AYANAMSA) % 360
@@ -321,6 +534,28 @@ def check_fixed_festivals(current_date):
                 return festival
     return None
 
+def get_vrata_for_day(tithi_name, paksha, day_of_week):
+    """
+    Given the Tithi, Paksha, and Day of Week, return the Vrata for that day if it exists.
+    
+    :param tithi_name: Name of the current Tithi (e.g., 'एकादशी')
+    :param paksha: Current Paksha (e.g., 'Shukla Paksha')
+    :param day_of_week: Day of the week (e.g., 'Monday')
+    :return: Name of the Vrata if one is found, otherwise None.
+    """
+    # Check for tithi-based Vratas
+    for vrata, details in vrata_mapping.items():
+        if 'tithi' in details:
+            # Match the tithi and paksha for tithi-based Vratas like Ekadashi, Pradosh, etc.
+            if details['tithi'] == tithi_name and (details['paksha'] == paksha or details['paksha'] == 'Both'):
+                return vrata
+
+        # Check for day-based Vratas like Somvar Vrat, Shani Vrat, etc.
+        if 'day_of_week' in details and details['day_of_week'] == day_of_week:
+            return vrata
+
+    return None
+
 
 
 
@@ -432,6 +667,9 @@ def astrology_api_view():
         if fixed_festival_today:
             festival_today = fixed_festival_today
 
+            # Call get_vrata_for_day to check for any Vrata today
+        vrata_today = get_vrata_for_day(tithi_name, paksha, now.strftime('%A'))
+
         # Prepare response data
         response_data = {
             'tithi': tithi_name,
@@ -466,7 +704,8 @@ def astrology_api_view():
              'brahma_start': brahma_muhurat_start.strftime('%I:%M:%S %p'),
             'brahma_end': brahma_muhurat_end.strftime('%I:%M:%S %p'),
              'time_zone':timezone_str,
-             'festival_today': festival_today if festival_today else 'None'
+             'festival_today': festival_today if festival_today else 'None',
+             'vrata_today': vrata_today if vrata_today else 'None',  # Add the vrata_today field    
         }
 
         return jsonify(response_data)
