@@ -431,9 +431,13 @@ def get_moonrise_moonset(observer, moon, ts, tz, date):
 
 def calculate_amanta_purnimanta_month(tithi_number, paksha, days_since_new_moon, days_since_full_moon):
     amanta_month_index = (days_since_new_moon // 30) % 12
+
     amanta_month = months[(amanta_month_index + 1) % 12] if paksha == 'Krishna Paksha' and tithi_number > 15 else months[amanta_month_index]
+
     purnimanta_month_index = (days_since_full_moon // 30) % 12
+
     purnimanta_month = months[(purnimanta_month_index + 1) % 12] if paksha == 'Shukla Paksha' and tithi_number <= 15 else months[purnimanta_month_index]
+    
     return amanta_month, purnimanta_month
 
 def calculate_rahu_kaal(sunrise, sunset, day_of_week):
