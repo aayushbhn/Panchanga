@@ -262,7 +262,7 @@ vrata_mapping = {
         'deity': 'Lord Vishnu, Goddess Lakshmi',
         'significance': 'Fasting for wealth, health, and prosperity',
     },
-    'Amavasya Vrat': {
+    'Amavasya Vrat': { 
         'tithi': 'अमावस्या',
         'paksha': 'Krishna Paksha',
         'deity': 'Pitru Devatas (Ancestors)',
@@ -654,25 +654,27 @@ def generate_significance(tithi_name, nakshatra_name, moon_sign, yoga_name):
 
     # Add messages based on Paksha in the Tithi
     if "Shukla" in tithi_name:
-        significance.append(messages['Shukla Paksha'])
+        significance.append(messages.get('Shukla Paksha', ""))
     elif "Krishna" in tithi_name:
-        significance.append(messages['Krishna Paksha'])
+        significance.append(messages.get('Krishna Paksha', ""))
 
     # Append messages based on Nakshatra
     if nakshatra_name in messages:
-        significance.append(messages[nakshatra_name])
+        significance.append(messages.get(nakshatra_name, ""))
 
     # Append messages based on Moon Sign
     if moon_sign in messages:
-        significance.append(messages[moon_sign])
+        significance.append(messages.get(moon_sign, ""))
 
     # Append messages based on Yoga
     if yoga_name in messages:
-        significance.append(messages[yoga_name])
+        significance.append(messages.get(yoga_name, ""))
 
-    # Join all messages into a single guidance text
-    return " ".join(significance) if significance else "Today is a good day for reflection and alignment with your intentions."
-
+    # Join all messages into a single guidance text with a single space between words
+    significance_text = " ".join(" ".join(significance).split())
+    
+    # Default message if no specific messages found
+    return significance_text if significance_text else "Today is a good day for reflection and alignment with your intentions."
 
 
 
