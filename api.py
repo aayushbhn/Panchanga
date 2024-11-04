@@ -378,6 +378,9 @@ vrata_mapping = {
     },
 }
 
+rashi_names = ['Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo', 'Libra', 
+                       'Scorpio', 'Sagittarius', 'Capricorn', 'Aquarius', 'Pisces']
+
 
 
 def tropical_to_sidereal(tropical_position):
@@ -627,8 +630,7 @@ def astrology_api_view():
         ritu = calculate_ritu(sun_sidereal)
 
         # Moon Sign (Rashi) calculation based on sidereal moon position
-        rashi_names = ['Mesha', 'Vrishabha', 'Mithuna', 'Karka', 'Simha', 'Kanya', 'Tula', 
-                       'Vrischika', 'Dhanu', 'Makara', 'Kumbha', 'Meena']
+       
         moon_sign_index = int(moon_sidereal // 30)  # Each Rashi spans 30°
         moon_sign = rashi_names[moon_sign_index % 12]
 
