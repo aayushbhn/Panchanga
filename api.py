@@ -831,6 +831,7 @@ def astrology_api_view():
             'moonrise': moonrise.strftime('%I:%M:%S %p') if moonrise else 'N/A',
             'moonset': moonset.strftime('%I:%M:%S %p') if moonset else 'N/A',
             'significance': significance_text,
+            'moon_sign_significance':"Hello this is a test text to see the significance",
             # 'rahu_start': rahu_start.strftime('%I:%M:%S %p'),
             # 'rahu_end': rahu_end.strftime('%I:%M:%S %p'),
             # 'gulika_start': gulika_start.strftime('%I:%M:%S %p'),
