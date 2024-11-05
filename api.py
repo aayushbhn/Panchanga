@@ -9,7 +9,7 @@ from timezonefinder import TimezoneFinder
 app = Flask(__name__)
 
 # ---------------------------- Panchanga Utility Functions ---------------------------------
-AYANAMSA = 24.2027778  # Lahiri Ayanamsa for 2024
+AYANAMSA =  24.2036111  # Lahiri Ayanamsa for 2024
 
 tithi_names = [
     'प्रथमा', 'द्वितीया', 'तृतीया', 'चतुर्थी', 'पञ्चमी', 'षष्ठी',
@@ -860,4 +860,4 @@ def astrology_api_view():
 
     # Run the Flask app local
 if __name__ == '__main__':
-    app.run(port=8001 ,debug=True)
+    app.run(debug=True)
