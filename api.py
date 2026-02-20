@@ -1042,15 +1042,22 @@ def calculate_panchanga_for_date(latitude, longitude, target_date_naive, tz_name
     significance_text = generate_significance(paksha, nakshatra_name, moon_sign, yoga_name)
     day_duration = (sunset - sunrise).total_seconds() / 3600
 
+    # Anga ending times (from sunrise of this day to next sunrise)
+    end_times = compute_angas_end_times(lat_r, lon_r, tz_name, date_ymd, now_local=target_date_local)
+
     return {
         "date": date_ymd,
         "day_of_week": target_date_local.strftime("%A"),
         "tithi": tithi_name,
+        "tithi_end": format_dt_local(end_times["tithi_end"]),
         "tithi_number": tithi_number,
         "paksha": paksha,
         "nakshatra": nakshatra_name,
+        "nakshatra_end": format_dt_local(end_times["nakshatra_end"]),
         "karana": karana_name,
+        "karana_end": format_dt_local(end_times["karana_end"]),
         "yoga": yoga_name,
+        "yoga_end": format_dt_local(end_times["yoga_end"]),
         "moon_sign": moon_sign,
         "ritu": ritu,
         "amanta_month": amanta_month,
@@ -1286,6 +1293,55 @@ def monthly_panchanga_api():
             "timezone": timezone_str,
             "total_days": num_days,
             "panchanga_data": monthly_data
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+@app.route("/panchanga-date", methods=["POST"])
+def panchanga_date_api():
+    """Panchanga for a single given date (day, month, year) at given coordinates."""
+    try:
+        data = request.get_json(force=True)
+        latitude = float(data.get("latitude"))
+        longitude = float(data.get("longitude"))
+        day = int(data.get("day"))
+        month = int(data.get("month"))
+        year = int(data.get("year"))
+        month_system = (data.get("month_system") or "both").strip().lower()
+
+        if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+            return jsonify({"error": "Invalid latitude or longitude."}), 400
+        if not (1 <= month <= 12):
+            return jsonify({"error": "Invalid month. Must be between 1 and 12."}), 400
+        if not (1900 <= year <= 2100):
+            return jsonify({"error": "Invalid year. Must be between 1900 and 2100."}), 400
+
+        try:
+            target_date = datetime(year, month, day)
+        except ValueError:
+            return jsonify({"error": "Invalid date (e.g. day out of range for month)."}), 400
+
+        lat_r = round_coord(latitude)
+        lon_r = round_coord(longitude)
+
+        timezone_str = cached_timezone_str(lat_r, lon_r)
+        if timezone_str is None:
+            return jsonify({"error": "Timezone could not be determined from the provided coordinates."}), 400
+
+        panchanga_data = calculate_panchanga_for_date(
+            latitude,
+            longitude,
+            target_date,
+            timezone_str,
+            month_system=month_system,
+        )
+
+        return jsonify({
+            "latitude": latitude,
+            "longitude": longitude,
+            "timezone": timezone_str,
+            "panchanga_data": panchanga_data,
         })
 
     except Exception as e:
