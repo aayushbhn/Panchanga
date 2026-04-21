@@ -436,6 +436,110 @@ messages = {
 }
 
 # ============================================================
+# 3) EXTENDED LOOKUP TABLES
+# ============================================================
+
+# Tithi nature cycles every 5: Nanda, Bhadra, Jaya, Rikta, Poorna
+TITHI_NATURE_NAMES = ["Nanda", "Bhadra", "Jaya", "Rikta", "Poorna"]
+
+# Nakshatra ruling planets (Vimshottari order)
+NAKSHATRA_LORDS = [
+    "Ketu","Venus","Sun","Moon","Mars","Rahu","Jupiter","Saturn","Mercury",
+    "Ketu","Venus","Sun","Moon","Mars","Rahu","Jupiter","Saturn","Mercury",
+    "Ketu","Venus","Sun","Moon","Mars","Rahu","Jupiter","Saturn","Mercury",
+]
+
+# Nakshatra presiding deities
+NAKSHATRA_DEITIES = [
+    "Ashwini Kumaras","Yama","Agni","Brahma","Soma","Rudra","Aditi","Brihaspati","Nagas",
+    "Pitru","Bhaga","Aryaman","Savitar","Vishvakarma","Vayu","Indra-Agni","Mitra","Indra",
+    "Nirrti","Apah","Vishvedevas","Vishnu","Ashta Vasus","Varuna",
+    "Aja Ekapada","Ahir Budhnya","Pushan",
+]
+
+# Choghadiya — 7-name cycle
+CHOGHADIYA_NAMES   = ["Udveg","Char","Labh","Amrit","Kaal","Shubh","Rog"]
+CHOGHADIYA_QUALITY = {
+    "Udveg":"Inauspicious","Char":"Neutral","Labh":"Auspicious",
+    "Amrit":"Highly Auspicious","Kaal":"Inauspicious","Shubh":"Auspicious","Rog":"Inauspicious",
+}
+# Python weekday Mon=0, Sun=6
+CHOGHADIYA_DAY_START   = {0:3, 1:6, 2:2, 3:5, 4:1, 5:4, 6:0}
+CHOGHADIYA_NIGHT_START = {0:1, 1:4, 2:6, 3:0, 4:3, 5:2, 6:5}
+
+# Durmuhurta: 0-indexed muhurta positions out of 15 daytime muhurtas
+DURMUHURTA_INDEX = {
+    0:[14], 1:[0,1], 2:[7], 3:[], 4:[9], 5:[7,8], 6:[6,7],
+}
+
+# Varjyam: (start_ghati, duration_ghati) out of 60 ghatis per nakshatra
+# Indexed same as nakshatras list (0=Ashwini … 26=Revati)
+VARJYAM_TABLE = [
+    (13,4),(12,4),(21,4),(26,4),(18,4),(24,4),(22,4),(19,4),(12,4),
+    ( 6,4),( 5,4),( 8,4),(11,4),(17,4),(17,4),(14,4),( 2,4),( 0,4),
+    (13,4),( 4,4),( 9,4),(23,4),(19,4),(24,4),( 7,4),(12,4),(27,4),
+]
+
+# Choghadiya slot significance
+CHOGHADIYA_SIGNIFICANCE = {
+    "Amrit":  "Most auspicious. Begin important work, perform puja, start journeys, sign agreements, take medicine. Highly favorable for all activities.",
+    "Shubh":  "Auspicious. Good for marriages, religious ceremonies, business dealings, and all positive ventures.",
+    "Labh":   "Favorable for business, trade, financial transactions, and wealth-related activities. Good for starting new ventures.",
+    "Char":   "Neutral — best for travel, movement, and short journeys. Routine work is fine; avoid major new starts.",
+    "Udveg":  "Inauspicious. Avoid new beginnings, business decisions, and travel. Can be used cautiously for government-related tasks (Sun rules this).",
+    "Kaal":   "Very inauspicious. Avoid all auspicious activities, new work, and travel. Refrain from important decisions.",
+    "Rog":    "Inauspicious. Risk of illness, disputes, and setbacks. Avoid health-related procedures, new ventures, and important tasks.",
+}
+
+# Tithi nature guidance
+TITHI_NATURE_SIGNIFICANCE = {
+    "Nanda":  "Nanda (Joyful) — ideal for celebrations, new initiatives, social gatherings, and all auspicious beginnings.",
+    "Bhadra": "Bhadra (Auspicious) — supports education, important ceremonies, constructive work, and stable undertakings.",
+    "Jaya":   "Jaya (Victorious) — lends strength to bold action, competition, and overcoming challenges.",
+    "Rikta":  "Rikta (Hollow) — avoid major new starts. Best used for completing existing work, routine tasks, and introspection.",
+    "Poorna": "Poorna (Complete) — abundant energy for fulfilling goals, completing projects, giving thanks, and festive celebration.",
+}
+
+# Nakshatra pada significance
+NAKSHATRA_PADA_DESC = [
+    "First pada — initiating energy; favorable for new starts and fresh intentions.",
+    "Second pada — stabilizing energy; good for building, consolidating, and steady progress.",
+    "Third pada — expanding energy; supports communication, relationships, and creative expression.",
+    "Fourth pada — deepening energy; favorable for spiritual practice, rest, and transitions.",
+]
+
+# Planetary transit significance
+PLANET_GOVERNS = {
+    "Sun":     "soul, authority, vitality, career, and government matters",
+    "Moon":    "mind, emotions, health, relationships, and daily life",
+    "Mars":    "energy, courage, conflict, property, and physical drive",
+    "Mercury": "communication, intellect, commerce, and learning",
+    "Jupiter": "wisdom, expansion, wealth, spirituality, and children",
+    "Venus":   "love, beauty, luxury, artistic pursuits, and relationships",
+    "Saturn":  "discipline, karma, longevity, challenges, and long-term outcomes",
+    "Rahu":    "ambition, materialism, foreign connections, and worldly desires",
+    "Ketu":    "spirituality, liberation, detachment, and past-life karma",
+}
+RASHI_NATURE_BRIEF = {
+    "Aries":"initiating and bold","Taurus":"stable and material","Gemini":"communicative and adaptable",
+    "Cancer":"nurturing and emotional","Leo":"confident and expressive","Virgo":"analytical and service-oriented",
+    "Libra":"harmonious and diplomatic","Scorpio":"intense and transformative",
+    "Sagittarius":"expansive and philosophical","Capricorn":"disciplined and ambitious",
+    "Aquarius":"innovative and independent","Pisces":"intuitive and spiritual",
+}
+
+# Yoga auspiciousness
+YOGA_AUSPICIOUS = {
+    "Vishkambha":False,"Priti":True,"Ayushman":True,"Saubhagya":True,
+    "Shobhana":True,"Atiganda":False,"Sukarma":True,"Dhriti":True,
+    "Shoola":False,"Ganda":False,"Vriddhi":True,"Dhruva":True,
+    "Vyaghata":False,"Harshana":True,"Vajra":True,"Siddhi":True,
+    "Vyatipata":False,"Variyana":True,"Parigha":False,"Shiva":True,
+    "Siddha":True,"Sadhya":True,"Shubha":True,"Shukla":True,
+    "Brahma":True,"Indra":True,"Vaidhriti":False,
+}
+
+# ============================================================
 # 4) PERFORMANCE CACHES / HELPERS
 # ============================================================
 def round_coord(x: float, places: int = 4) -> float:
@@ -656,13 +760,570 @@ def get_vratas_for_day(tithi_name, paksha, day_of_week, nakshatra_name=None):
             out.append(x)
     return out
 
-def generate_significance(paksha, nakshatra_name, moon_sign, yoga_name):
-    parts = []
-    for k in (paksha, nakshatra_name, moon_sign, yoga_name):
-        if k in messages:
-            parts.append(messages[k])
-    txt = " ".join(parts).strip()
-    return txt if txt else "Today is a good day for reflection and alignment with your intentions."
+def _p(name, pid, vid, reason):
+    return {"name": name, "id": pid, "variant_id": vid, "reason": reason}
+
+def get_poojas_for_day(tithi_number, paksha, amanta_month, day_of_week, festival_list):
+    poojas = []
+    festival_set = set(festival_list)
+    is_shukla  = paksha == "Shukla Paksha"
+    is_krishna = paksha == "Krishna Paksha"
+
+    # 1. Maha Shivaratri — Phalguna Krishna Chaturdashi
+    is_maha_shiv = tithi_number == 29 and is_krishna and amanta_month in ("Phalguna", "Adhik Phalguna")
+    if is_maha_shiv:
+        poojas.append(_p("Maha Shivaratri Pooja at Pashupatinath",
+                         "7468622348530", "42124272730354", "Maha Shivaratri (Phalguna Krishna Chaturdashi)"))
+
+    # 2. Masik Shivaratri — Krishna Chaturdashi every other month
+    if tithi_number == 29 and is_krishna and not is_maha_shiv:
+        poojas.append(_p("Masik Shivaratri Pooja at Pashupatinath",
+                         "9035889672434", "49098993008882", "Masik Shivaratri (Krishna Chaturdashi)"))
+
+    # 3. Karya Siddhi Ganesh — Shukla Chaturthi OR Mangal Chaturthi (Tuesday + any Chaturthi)
+    if tithi_number == 4 and is_shukla:
+        reason = ("Mangal Chaturthi (Tuesday + Shukla Chaturthi)" if day_of_week == "Tuesday"
+                  else "Shukla Paksha Chaturthi")
+        poojas.append(_p("Karya Siddhi Ganesh Pooja", "7465529606386", "42114181464306", reason))
+    elif tithi_number == 19 and day_of_week == "Tuesday":
+        poojas.append(_p("Karya Siddhi Ganesh Pooja", "7465529606386", "42114181464306",
+                         "Mangal Chaturthi (Tuesday + Krishna Chaturthi)"))
+
+    # 4. Lakshmi Kuber — specific tithis + key festivals
+    _LK_FEST = {"Dhanteras":"Dhanteras","Diwali (Lakshmi Puja)":"Diwali",
+                "Tihar (Lakshmi Puja)":"Tihar Lakshmi Puja","Akshaya Tritiya":"Akshaya Tritiya"}
+    lk_reason = None
+    if tithi_number == 15:
+        lk_reason = "Purnima"
+    elif tithi_number == 30:
+        lk_reason = "Amavasya (Aausi)"
+    elif tithi_number == 13 and is_shukla:
+        lk_reason = "Shukla Trayodashi"
+    elif tithi_number == 28 and is_krishna:
+        lk_reason = "Krishna Trayodashi"
+    elif tithi_number == 5 and is_shukla:
+        lk_reason = "Shukla Panchami"
+    elif tithi_number == 20 and is_krishna:
+        lk_reason = "Krishna Panchami"
+    else:
+        for f, label in _LK_FEST.items():
+            if f in festival_set:
+                lk_reason = label
+                break
+    if lk_reason:
+        poojas.append(_p("Lakshmi Kuber Pooja", "8820054950130", "47901573153010", lk_reason))
+
+    # 5. Rudra Abishek — Krishna Pradosh (Krishna Trayodashi, tithi 28)
+    if tithi_number == 28 and is_krishna:
+        poojas.append(_p("Rudra Abishek Pooja", "7465532653810", "42114187985138",
+                         "Krishna Pradosh (Krishna Paksha Trayodashi)"))
+
+    # 6. Laxmi Narayan — Shukla Ekadashi, Purnima, Shukla Trayodashi
+    ln_reason = None
+    if tithi_number == 11 and is_shukla:
+        ln_reason = "Shukla Paksha Ekadashi"
+    elif tithi_number == 13 and is_shukla:
+        ln_reason = "Shukla Paksha Trayodashi"
+    elif tithi_number == 15:
+        ln_reason = "Purnima"
+    if ln_reason:
+        poojas.append(_p("Laxmi Narayan Pooja", "7465524363506", "42114162000114", ln_reason))
+
+    # 7. Shri Durga Saptshati — Navaratri days OR Navami (any paksha)
+    is_navaratri = amanta_month in ("Chaitra", "Ashwin") and is_shukla and 1 <= tithi_number <= 9
+    if is_navaratri:
+        poojas.append(_p("Shri Durga Saptshati Chandi Path", "8817900945650", "47892681785586",
+                         f"Navaratri ({amanta_month} Shukla)"))
+    elif tithi_number in (9, 24):
+        poojas.append(_p("Shri Durga Saptshati Chandi Path", "8817900945650", "47892681785586",
+                         f"Navami ({paksha})"))
+
+    # 8. Kaal Bhairav and Shakti Maha Puja — Krishna Ashtami
+    if tithi_number == 23 and is_krishna:
+        poojas.append(_p("Kaal Bhairav and Shakti Maha Puja", "8955542700274", "48729126895858",
+                         "Krishna Paksha Ashtami"))
+
+    return poojas if poojas else [{"name": "None", "id": None, "variant_id": None, "reason": None}]
+
+
+# ============================================================
+# GRAHA GOCHAR  (all 9 Navagraha positions)
+# ============================================================
+def get_all_planet_positions(t):
+    earth = geocentric_observer()
+    planet_map = [
+        ("Sun","sun"),("Moon","moon"),("Mars","mars"),("Mercury","mercury"),
+        ("Jupiter","jupiter barycenter"),("Venus","venus"),("Saturn","saturn barycenter"),
+    ]
+    result = {}
+    for name, body in planet_map:
+        lon_trop = earth.at(t).observe(EPH[body]).apparent().frame_latlon(ecliptic_frame)[1].degrees
+        lon_sid  = tropical_to_sidereal(float(np.atleast_1d(lon_trop)[0]))
+        rashi    = rashi_names[int(lon_sid // 30) % 12]
+        result[name] = {
+            "longitude":   round(lon_sid, 4),
+            "rashi":       rashi,
+            "significance": (f"Transiting {rashi} ({RASHI_NATURE_BRIEF[rashi]}), "
+                             f"influencing {PLANET_GOVERNS[name]}."),
+        }
+
+    d = float(np.atleast_1d(t.tt)[0]) - 2451545.0
+    rahu_trop = (125.044522 - 0.052953922 * d) % 360.0
+    rahu_sid  = tropical_to_sidereal(rahu_trop)
+    ketu_sid  = (rahu_sid + 180.0) % 360.0
+    for name, lon_sid in (("Rahu", rahu_sid), ("Ketu", ketu_sid)):
+        rashi = rashi_names[int(lon_sid // 30) % 12]
+        result[name] = {
+            "longitude":   round(lon_sid, 4),
+            "rashi":       rashi,
+            "significance": (f"Transiting {rashi} ({RASHI_NATURE_BRIEF[rashi]}), "
+                             f"influencing {PLANET_GOVERNS[name]}."),
+        }
+    return result
+
+
+# ============================================================
+# CHOGHADIYA
+# ============================================================
+def calculate_choghadiya(sunrise, sunset, next_sunrise, weekday):
+    day_part   = (sunset - sunrise).total_seconds() / 8
+    night_part = (next_sunrise - sunset).total_seconds() / 8
+
+    def _slots(base, part, start_idx):
+        out = []
+        for i in range(8):
+            name = CHOGHADIYA_NAMES[(start_idx + i) % 7]
+            s = base + timedelta(seconds=part * i)
+            e = base + timedelta(seconds=part * (i + 1))
+            out.append({
+                "name":        name,
+                "quality":     CHOGHADIYA_QUALITY[name],
+                "significance":CHOGHADIYA_SIGNIFICANCE[name],
+                "start":       s.strftime("%I:%M %p"),
+                "end":         e.strftime("%I:%M %p"),
+            })
+        return out
+
+    return {
+        "day":   _slots(sunrise,  day_part,   CHOGHADIYA_DAY_START[weekday]),
+        "night": _slots(sunset,   night_part, CHOGHADIYA_NIGHT_START[weekday]),
+    }
+
+
+# ============================================================
+# DURMUHURTA
+# ============================================================
+_DURMUHURTA_SIG = ("Avoid starting new ventures, ceremonies, travel, or signing agreements. "
+                   "Routine work and spiritual practice are acceptable during this period.")
+_NO_DURMUHURTA  = "No Durmuhurta today — Thursday (Guruvar) is auspicious and free of this inauspicious period."
+
+def calculate_durmuhurta(sunrise, sunset, weekday):
+    muhurta = (sunset - sunrise).total_seconds() / 15
+    indices = DURMUHURTA_INDEX[weekday]
+    if not indices:
+        return {"windows": [], "significance": _NO_DURMUHURTA}
+    windows = []
+    for idx in indices:
+        s = sunrise + timedelta(seconds=muhurta * idx)
+        e = s + timedelta(seconds=muhurta)
+        windows.append([s.strftime("%I:%M %p"), e.strftime("%I:%M %p")])
+    return {"windows": windows, "significance": _DURMUHURTA_SIG}
+
+
+# ============================================================
+# NAKSHATRA START  (estimate from moon position + end time)
+# ============================================================
+def estimate_nakshatra_start_utc(moon_sid_deg, now_utc, nak_end_utc):
+    deg_into = moon_sid_deg % NAK_DEG
+    deg_left = NAK_DEG - deg_into
+    if nak_end_utc and deg_left > 0:
+        secs_left = (nak_end_utc - now_utc).total_seconds()
+        if secs_left > 0:
+            speed = deg_left / secs_left          # deg/sec
+            return now_utc - timedelta(seconds=deg_into / speed)
+    # fallback: average moon speed 13.2°/day
+    return now_utc - timedelta(seconds=(deg_into / 13.2) * 86400)
+
+
+# ============================================================
+# VARJYAM
+# ============================================================
+def calculate_varjyam(nak_idx, nak_start_utc, nak_end_utc, tz):
+    offset_g, dur_g = VARJYAM_TABLE[nak_idx]
+    end = nak_end_utc if nak_end_utc else (nak_start_utc + timedelta(hours=25))
+    ghati   = (end - nak_start_utc).total_seconds() / 60.0
+    v_start = nak_start_utc + timedelta(seconds=ghati * offset_g)
+    v_end   = v_start       + timedelta(seconds=ghati * dur_g)
+    return {
+        "start": v_start.astimezone(tz).strftime("%I:%M %p"),
+        "end":   v_end.astimezone(tz).strftime("%I:%M %p"),
+        "significance": ("Inauspicious window based on the current nakshatra. "
+                         "Avoid starting new work, ceremonies, or important decisions during this time."),
+    }
+
+
+# ============================================================
+# ADHIK MAAS DETECTION
+# ============================================================
+def detect_adhik_maas(target_dt_local, amanta_month, tz_name, lat_r, lon_r):
+    target_utc = target_dt_local.astimezone(pytz.utc)
+    target_tt  = TS.from_datetime(target_utc).tt
+    y, m = target_dt_local.year, target_dt_local.month
+
+    ph = cached_moon_phases_for_month(y, m, tz_name)
+    last_new = last_event_before(ph["new_tt"], ph["new_dt"], target_tt)
+    if not last_new:
+        return False, amanta_month
+
+    last_new_tt = TS.from_datetime(last_new).tt
+    prev_new = last_event_before(ph["new_tt"], ph["new_dt"], last_new_tt - 0.01)
+    if not prev_new:
+        py, pm = _prev_month(y, m)
+        ph2 = cached_moon_phases_for_month(py, pm, tz_name)
+        prev_new = last_event_before(ph2["new_tt"], ph2["new_dt"], last_new_tt - 0.01)
+    if not prev_new:
+        return False, amanta_month
+
+    obs = cached_observer(lat_r, lon_r)
+    if sun_sidereal_rashi_at(last_new, TS, EPH, obs) == sun_sidereal_rashi_at(prev_new, TS, EPH, obs):
+        return True, f"Adhik {amanta_month}"
+    return False, amanta_month
+
+
+# ============================================================
+# DYNAMIC SIGNIFICANCE TEXT
+# ============================================================
+_TITHI_NATURE_GUIDANCE = {
+    "Nanda":  "Its Nanda (joyful) nature makes it ideal for celebrations, new initiatives, and social connections.",
+    "Bhadra": "Its Bhadra (auspicious) nature supports ceremonies, education, and all forms of constructive work.",
+    "Jaya":   "Its Jaya (victorious) nature lends strength to decisive action — good for challenges and breaking through obstacles.",
+    "Rikta":  "Its Rikta (hollow) nature advises stepping back from major new starts; focus on completing existing work and introspection.",
+    "Poorna": "Its Poorna (complete) nature brings fullness — an excellent time to wrap up goals, give thanks, and celebrate completions.",
+}
+_MOON_SIGN_FLAVOR = {
+    "Aries":"driving initiative and the courage to act decisively",
+    "Taurus":"grounding energy in patience, beauty, and material comfort",
+    "Gemini":"quickening the mind and opening channels of communication",
+    "Cancer":"drawing attention to home, family, and emotional nourishment",
+    "Leo":"fueling creative expression, confidence, and the desire to lead",
+    "Virgo":"sharpening analytical thinking and a desire for order and service",
+    "Libra":"cultivating harmony, aesthetic refinement, and balanced relationships",
+    "Scorpio":"intensifying emotional depth, intuition, and transformative insight",
+    "Sagittarius":"expanding the horizons of knowledge, faith, and adventure",
+    "Capricorn":"anchoring ambitions in discipline and steady long-term effort",
+    "Aquarius":"sparking originality, humanitarian instincts, and independent thinking",
+    "Pisces":"dissolving boundaries and heightening spiritual receptivity and empathy",
+}
+_RITU_CLOSING = {
+    "Vasanta (Spring)":    "The spring season amplifies this with its sense of renewal and fresh starts.",
+    "Grishma (Summer)":    "The summer's intensity invites focused, purposeful activity.",
+    "Varsha (Monsoon)":    "The monsoon's cleansing quality deepens whatever you undertake today.",
+    "Sharad (Autumn)":     "Autumn's crisp clarity makes this a productive season for study and focused work.",
+    "Hemanta (Pre-Winter)":"The pre-winter season turns energy inward — ideal for family warmth and spiritual study.",
+    "Shishira (Winter)":   "Winter's quiet depth supports meditation, study, and building inner reserves.",
+}
+
+def generate_significance(tithi_name, tithi_nature, paksha, nakshatra_name,
+                          nakshatra_lord, yoga_name, moon_sign, sun_sign,
+                          ritu, day_of_week, festivals, vratas, is_adhik_maas=False):
+    sentences = []
+    clean_festivals = [f for f in (festivals or []) if f != "None"]
+    clean_vratas    = [v for v in (vratas or [])    if v != "None"]
+
+    if is_adhik_maas:
+        sentences.append(
+            "This day falls within an Adhik Maas — a rare intercalary lunar month — "
+            "making any act of charity, worship, or self-discipline especially potent."
+        )
+
+    if clean_festivals:
+        joined = (clean_festivals[0] if len(clean_festivals) == 1
+                  else ", ".join(clean_festivals[:-1]) + f" and {clean_festivals[-1]}")
+        sentences.append(
+            f"Today marks {joined}, lending particular sanctity and festive significance to this day."
+        )
+
+    paksha_phrase = ("the growing light of the waxing Moon" if "Shukla" in paksha
+                     else "the deepening stillness of the waning Moon")
+    sentences.append(
+        f"Under {paksha_phrase}, it is {tithi_name} Tithi. "
+        + _TITHI_NATURE_GUIDANCE[tithi_nature]
+    )
+
+    sentences.append(
+        f"The Moon moves through {nakshatra_name} Nakshatra — overseen by {nakshatra_lord} "
+        f"and the deity {NAKSHATRA_DEITIES[nakshatras.index(nakshatra_name)]} — in {moon_sign}, "
+        f"{_MOON_SIGN_FLAVOR[moon_sign]}."
+    )
+
+    if YOGA_AUSPICIOUS.get(yoga_name, True):
+        sentences.append(
+            f"{yoga_name} Yoga graces the day with its auspicious influence, "
+            "supporting well-intentioned actions and devotional practice."
+        )
+    else:
+        sentences.append(
+            f"{yoga_name} Yoga calls for mindfulness today — avoid impulsive decisions "
+            "and give careful thought before beginning anything significant."
+        )
+
+    sentences.append(
+        f"The Sun is currently in {sun_sign}, shaping the broader seasonal backdrop for this period."
+    )
+
+    if clean_vratas:
+        vrata_str = (clean_vratas[0] if len(clean_vratas) == 1
+                     else " and ".join(clean_vratas[:2]))
+        sentences.append(
+            f"Devotees observing {vrata_str} will find the day's energies supportive "
+            "of deep worship and inner focus."
+        )
+
+    if ritu in _RITU_CLOSING:
+        sentences.append(_RITU_CLOSING[ritu])
+
+    return " ".join(sentences)
+
+def generate_daily_summary(d):
+    """Generate a self-contained HTML summary of the day's panchanga."""
+    def _esc(s):
+        return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    def _badge(text, color):
+        return f'<span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:{color};color:#fff;margin:2px">{_esc(text)}</span>'
+
+    def _auspicious_quality(name):
+        q = {"Amrit": "#1a7f4b", "Shubh": "#2e7d32", "Labh": "#388e3c",
+             "Char": "#f57c00", "Udveg": "#c62828", "Kaal": "#b71c1c", "Rog": "#d32f2f"}
+        return q.get(name, "#555")
+
+    festivals = [f for f in (d.get("festival_today") or []) if f != "None"]
+    vratas    = [v for v in (d.get("vrata_today") or [])    if v != "None"]
+    poojas    = [p for p in (d.get("pooja_today") or [])    if p.get("name") != "None"]
+    chog_day  = (d.get("choghadiya") or {}).get("day", [])
+    chog_night= (d.get("choghadiya") or {}).get("night", [])
+    durmuhurta= d.get("durmuhurta") or {}
+    varjyam   = d.get("varjyam") or {}
+    amrit     = d.get("amrit_kaal") or {}
+    gochar    = d.get("graha_gochar") or {}
+    subh      = d.get("subh_muhurat") or []
+    asubh     = d.get("asubh_muhurat") or []
+
+    h = []
+    h.append('<style>'
+        '.ps{font-family:system-ui,sans-serif;color:#222;line-height:1.5;max-width:900px;margin:0 auto}'
+        '.ps h2{font-size:1.4em;font-weight:700;margin:0 0 4px}'
+        '.ps h3{font-size:1em;font-weight:700;margin:0 0 10px;color:#5c3317;border-bottom:2px solid #f4a838;padding-bottom:4px;display:flex;align-items:center;gap:6px}'
+        '.ps .sec{background:#fff;border:1px solid #e8d5b0;border-radius:10px;padding:16px;margin-bottom:14px}'
+        '.ps .sec.good{border-color:#a5d6a7;background:#f1f8e9}'
+        '.ps .sec.bad{border-color:#ef9a9a;background:#fff3f3}'
+        '.ps .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}'
+        '.ps .card{background:#fffbf2;border:1px solid #f4a838;border-radius:8px;padding:10px}'
+        '.ps .card .label{font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px}'
+        '.ps .card .value{font-size:15px;font-weight:700;color:#2c1810;margin-top:2px}'
+        '.ps .card .sub{font-size:11px;color:#777;margin-top:2px}'
+        '.ps .row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0e8d8}'
+        '.ps .row:last-child{border-bottom:none}'
+        '.ps .row .k{font-weight:600;color:#555;font-size:13px}'
+        '.ps .row .v{font-size:13px;color:#222;text-align:right}'
+        '.ps .chog-slot{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px dotted #eee}'
+        '.ps .chog-slot:last-child{border-bottom:none}'
+        '.ps .pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;color:#fff}'
+        '.ps .sig{font-size:14px;color:#3d2c00;line-height:1.7;background:#fffbf0;border-left:4px solid #f4a838;padding:12px 14px;border-radius:0 8px 8px 0}'
+        '.ps .hdr{background:linear-gradient(135deg,#c0392b 0%,#e67e22 50%,#f39c12 100%);color:#fff;border-radius:10px;padding:16px 20px;margin-bottom:14px}'
+        '.ps .hdr h2{color:#fff}'
+        '.ps .hdr .meta{font-size:12px;opacity:.85;margin-top:4px}'
+        '.ps .planet-row{display:grid;grid-template-columns:90px 1fr;gap:4px;padding:4px 0;border-bottom:1px solid #f0e8d8;font-size:13px}'
+        '.ps .planet-row:last-child{border-bottom:none}'
+        '.ps table.chog{width:100%;border-collapse:collapse;font-size:13px}'
+        '.ps table.chog th{background:#5c3317;color:#fff;padding:6px 10px;text-align:left}'
+        '.ps table.chog td{padding:5px 10px;border-bottom:1px solid #f0e8d8}'
+        '</style>')
+
+    # ── Header ──────────────────────────────────────────────
+    paksha_icon = "🌕" if "Shukla" in str(d.get("paksha", "")) else "🌑"
+    h.append(f'''<div class="ps"><div class="ps hdr">
+      <h2>{_esc(d.get("day_of_week",""))} · {_esc(d.get("date",""))}</h2>
+      <div class="meta">
+        {paksha_icon} {_esc(d.get("paksha",""))} &nbsp;|&nbsp;
+        {_esc(d.get("amanta_month",""))} (Amanta) &nbsp;|&nbsp;
+        Vikram Samvat {_esc(d.get("vikram_samvat",""))} &nbsp;|&nbsp;
+        Shaka {_esc(d.get("shaka_samvat",""))}
+        {" &nbsp;|&nbsp; <strong>Adhik Maas</strong>" if d.get("adhik_maas") else ""}
+      </div>
+    </div>''')
+
+    # ── Five Angas ───────────────────────────────────────────
+    h.append('<div class="ps sec"><h3>🕉 The Five Angas (Panchanga)</h3><div class="ps grid">')
+    def _card(label, value, sub=""):
+        s = f'<div class="ps card"><div class="label">{_esc(label)}</div><div class="value">{_esc(value)}</div>'
+        if sub: s += f'<div class="sub">{_esc(sub)}</div>'
+        s += '</div>'
+        return s
+    tithi_end_str  = f'Ends {d["tithi_end"]}' if d.get("tithi_end") else "Continues past midnight"
+    nak_end_str    = f'Ends {d["nakshatra_end"]}' if d.get("nakshatra_end") else "Continues past midnight"
+    yoga_end_str   = f'Ends {d["yoga_end"]}' if d.get("yoga_end") else "Continues past midnight"
+    karana_end_str = f'Ends {d["karana_end"]}' if d.get("karana_end") else "Continues past midnight"
+
+    h.append(_card("Tithi (Vara)",
+                   f'{d.get("tithi","")} #{d.get("tithi_number","")}',
+                   f'{d.get("tithi_nature","")} nature · {tithi_end_str}'))
+    h.append(_card("Nakshatra",
+                   d.get("nakshatra",""),
+                   f'Pada {d.get("nakshatra_pada","")} · {nak_end_str}'))
+    h.append(_card("Yoga", d.get("yoga",""), yoga_end_str))
+    h.append(_card("Karana", d.get("karana",""), karana_end_str))
+    h.append(_card("Vara (Day)", d.get("day_of_week",""),
+                   f'{d.get("ritu","")} season'))
+    h.append('</div>')
+    # Tithi + Nakshatra nature blurbs
+    tn_sig = d.get("tithi_nature_significance","")
+    np_sig = d.get("nakshatra_pada_significance","")
+    if tn_sig or np_sig:
+        h.append('<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">')
+        if tn_sig:
+            h.append(f'<div style="font-size:12px;color:#5c3317;background:#fffbf0;padding:8px 10px;border-radius:6px;border-left:3px solid #f4a838">{_esc(tn_sig)}</div>')
+        if np_sig:
+            h.append(f'<div style="font-size:12px;color:#5c3317;background:#fffbf0;padding:8px 10px;border-radius:6px;border-left:3px solid #f4a838">{_esc(np_sig)}</div>')
+        h.append('</div>')
+    h.append('</div>')
+
+    # ── Significance ─────────────────────────────────────────
+    if d.get("significance"):
+        h.append(f'<div class="ps sec"><h3>✨ Day\'s Significance</h3>'
+                 f'<div class="ps sig">{_esc(d["significance"])}</div></div>')
+
+    # ── Festivals / Vratas ───────────────────────────────────
+    if festivals or vratas:
+        h.append('<div class="ps sec"><h3>🎉 Festivals &amp; Vratas</h3>')
+        if festivals:
+            h.append('<div style="margin-bottom:6px"><strong>Festivals:</strong> ')
+            h.append(" ".join(_badge(f, "#c0392b") for f in festivals))
+            h.append('</div>')
+        if vratas:
+            h.append('<div><strong>Vratas:</strong> ')
+            h.append(" ".join(_badge(v, "#1565c0") for v in vratas))
+            h.append('</div>')
+        h.append('</div>')
+
+    # ── Best Times ───────────────────────────────────────────
+    h.append('<div class="ps sec good"><h3>✅ Best Times Today — What To Do</h3>')
+    # Brahma Muhurta
+    for m in subh:
+        if "brahma" in m:
+            t = m["brahma"]
+            h.append(f'<div class="ps row"><span class="k">🌄 Brahma Muhurta</span>'
+                     f'<span class="v">{_esc(t[0])} – {_esc(t[1])}</span></div>')
+            break
+    # Abhijit
+    for m in subh:
+        if "abhijit" in m:
+            t = m["abhijit"]
+            h.append(f'<div class="ps row"><span class="k">☀️ Abhijit Muhurta</span>'
+                     f'<span class="v">{_esc(t[0])} – {_esc(t[1])}</span></div>')
+            break
+    # Amrit Kaal
+    windows = amrit.get("windows", [])
+    if windows:
+        for w in windows:
+            h.append(f'<div class="ps row"><span class="k">🌙 Amrit Kaal</span>'
+                     f'<span class="v">{_esc(w[0])} – {_esc(w[1])}</span></div>')
+    else:
+        h.append('<div class="ps row"><span class="k">🌙 Amrit Kaal</span>'
+                 '<span class="v" style="color:#888">None today</span></div>')
+    # Auspicious choghadiya
+    good_slots = [s for s in chog_day + chog_night
+                  if s.get("quality") in ("Auspicious", "Highly Auspicious")]
+    if good_slots:
+        h.append(f'<div class="ps row" style="padding-top:8px"><span class="k">Auspicious Choghadiya</span>'
+                 f'<span class="v">' +
+                 "".join(f'<span style="margin-left:4px;font-size:12px">{_badge(s["name"],"#2e7d32")} {_esc(s["start"])}–{_esc(s["end"])}</span>'
+                         for s in good_slots) +
+                 '</span></div>')
+    if amrit.get("significance"):
+        h.append(f'<div style="font-size:12px;color:#2e7d32;margin-top:8px;padding:6px;background:#f1f8e9;border-radius:4px">{_esc(amrit["significance"])}</div>')
+    h.append('</div>')
+
+    # ── Times to Avoid ────────────────────────────────────────
+    h.append('<div class="ps sec bad"><h3>⛔ Times to Avoid</h3>')
+    for m in asubh:
+        for k, t in m.items():
+            label = {"rahu": "🔴 Rahu Kaal", "gulika": "🟠 Gulika Kaal", "yamaganda": "⚫ Yamaganda"}.get(k, k.title())
+            h.append(f'<div class="ps row"><span class="k">{label}</span>'
+                     f'<span class="v">{_esc(t[0])} – {_esc(t[1])}</span></div>')
+    # Durmuhurta
+    dur_wins = durmuhurta.get("windows", [])
+    if dur_wins:
+        for w in dur_wins:
+            h.append(f'<div class="ps row"><span class="k">🚫 Durmuhurta</span>'
+                     f'<span class="v">{_esc(w[0])} – {_esc(w[1])}</span></div>')
+    else:
+        h.append(f'<div class="ps row"><span class="k">🚫 Durmuhurta</span>'
+                 f'<span class="v" style="color:#2e7d32">None today (auspicious day)</span></div>')
+    # Varjyam
+    if varjyam.get("start"):
+        h.append(f'<div class="ps row"><span class="k">⚠️ Varjyam</span>'
+                 f'<span class="v">{_esc(varjyam["start"])} – {_esc(varjyam["end"])}</span></div>')
+    if durmuhurta.get("significance"):
+        h.append(f'<div style="font-size:12px;color:#c62828;margin-top:8px;padding:6px;background:#fff3f3;border-radius:4px">{_esc(durmuhurta["significance"])}</div>')
+    h.append('</div>')
+
+    # ── Choghadiya Table ─────────────────────────────────────
+    if chog_day or chog_night:
+        h.append('<div class="ps sec"><h3>🕐 Choghadiya</h3>'
+                 '<table class="ps chog">'
+                 '<thead><tr><th>Period</th><th>Name</th><th>Quality</th><th>Start</th><th>End</th><th>Guidance</th></tr></thead>'
+                 '<tbody>')
+        for i, slot in enumerate(chog_day):
+            color = _auspicious_quality(slot["name"])
+            h.append(f'<tr><td>Day {i+1}</td>'
+                     f'<td>{_badge(slot["name"], color)}</td>'
+                     f'<td style="color:{color};font-weight:600">{_esc(slot.get("quality",""))}</td>'
+                     f'<td>{_esc(slot.get("start",""))}</td>'
+                     f'<td>{_esc(slot.get("end",""))}</td>'
+                     f'<td style="font-size:11px;color:#555">{_esc(slot.get("significance","")[:70])}…</td></tr>')
+        for i, slot in enumerate(chog_night):
+            color = _auspicious_quality(slot["name"])
+            h.append(f'<tr style="background:#f0f0f8"><td>Night {i+1}</td>'
+                     f'<td>{_badge(slot["name"], color)}</td>'
+                     f'<td style="color:{color};font-weight:600">{_esc(slot.get("quality",""))}</td>'
+                     f'<td>{_esc(slot.get("start",""))}</td>'
+                     f'<td>{_esc(slot.get("end",""))}</td>'
+                     f'<td style="font-size:11px;color:#555">{_esc(slot.get("significance","")[:70])}…</td></tr>')
+        h.append('</tbody></table></div>')
+
+    # ── Poojas ───────────────────────────────────────────────
+    if poojas:
+        h.append('<div class="ps sec"><h3>🪔 Poojas Today</h3>')
+        for p in poojas:
+            h.append(f'<div class="ps row"><span class="k">{_esc(p["name"])}</span>'
+                     f'<span class="v" style="font-size:12px;color:#5c3317">{_esc(p.get("reason",""))}</span></div>')
+        h.append('</div>')
+
+    # ── Planetary Transits ───────────────────────────────────
+    if gochar:
+        h.append('<div class="ps sec"><h3>🪐 Planetary Transits (Graha Gochar)</h3>')
+        for planet, info in gochar.items():
+            h.append(f'<div class="ps planet-row">'
+                     f'<span style="font-weight:700;color:#2c1810">{_esc(planet)}</span>'
+                     f'<span style="color:#555">{_esc(info.get("rashi",""))} '
+                     f'<span style="font-size:11px;color:#888">({round(info.get("longitude",0),1)}°)</span>'
+                     f'</span></div>')
+        h.append('</div>')
+
+    # ── Moon & Sun info ──────────────────────────────────────
+    h.append('<div class="ps sec"><h3>🌙 Solar &amp; Lunar</h3><div class="ps grid">')
+    h.append(_card("Moon Sign", d.get("moon_sign",""), f'Nakshatra: {d.get("nakshatra","")} | Lord: {d.get("nakshatra_lord","")}'))
+    h.append(_card("Sun Sign", d.get("sun_sign",""), f'Ritu: {d.get("ritu","")}'))
+    h.append(_card("Sunrise", d.get("sunrise",""), ""))
+    h.append(_card("Sunset", d.get("sunset",""), f'Day: {d.get("day_duration","")}'))
+    if d.get("moonrise"): h.append(_card("Moonrise", d.get("moonrise",""), ""))
+    if d.get("moonset"):  h.append(_card("Moonset",  d.get("moonset",""), ""))
+    h.append('</div></div>')
+
+    h.append('</div>')  # close .ps
+    return "".join(h)
+
 
 # ============================================================
 # 8) SUNRISE / MOONRISE
@@ -936,10 +1597,104 @@ def compute_angas_end_times(lat_r, lon_r, tz_name, date_ymd, now_local=None):
         "karana_end": to_local(kar_end_t),
     }
 
+@lru_cache(maxsize=600)
+def compute_month_anga_end_times_batch(year, month, tz_name):
+    """4 find_discrete calls over the full month instead of 30×4=120. ~10-15× speedup."""
+    tz = pytz.timezone(tz_name)
+    next_m = datetime(year + 1, 1, 1) if month == 12 else datetime(year, month + 1, 1)
+    num_days = (next_m - datetime(year, month, 1)).days
+
+    t0 = TS.from_datetime(
+        tz.localize(datetime(year, month, 1, 0, 0)).astimezone(pytz.utc) - timedelta(hours=12)
+    )
+    t1 = TS.from_datetime(
+        tz.localize(datetime(year, month, num_days, 23, 59)).astimezone(pytz.utc) + timedelta(days=3)
+    )
+
+    def _mf(func, step):
+        f = lambda t: func(t)
+        f.step_days = step
+        return f
+
+    t_tt, t_vv = find_discrete(t0, t1, _mf(tithi_index_at,     0.125))
+    n_tt, n_vv = find_discrete(t0, t1, _mf(nakshatra_index_at, 0.25))
+    y_tt, y_vv = find_discrete(t0, t1, _mf(yoga_index_at,      0.25))
+    k_tt, k_vv = find_discrete(t0, t1, _mf(karana_index_at,    0.125))
+
+    def _events(tt_arr, vv_arr, tz_):
+        jds = [tt.tt for tt in tt_arr]
+        dts = [tt.utc_datetime().replace(tzinfo=pytz.utc).astimezone(tz_) for tt in tt_arr]
+        vals = [_to_int_scalar(vv) for vv in vv_arr]
+        return jds, dts, vals
+
+    t_jds, t_dts, t_vals = _events(t_tt, t_vv, tz)
+    n_jds, n_dts, n_vals = _events(n_tt, n_vv, tz)
+    y_jds, y_dts, y_vals = _events(y_tt, y_vv, tz)
+    k_jds, k_dts, k_vals = _events(k_tt, k_vv, tz)
+
+    def _next_after(jds, dts, vals, noon_jd, cur):
+        cur = int(cur)
+        for jd, dt, v in zip(jds, dts, vals):
+            if jd > noon_jd and v != cur:
+                return dt
+        return None
+
+    result = {}
+    for day in range(1, num_days + 1):
+        noon = TS.from_datetime(tz.localize(datetime(year, month, day, 12, 0)).astimezone(pytz.utc))
+        nj = noon.tt
+        result[datetime(year, month, day).strftime("%Y-%m-%d")] = {
+            "tithi_end":     _next_after(t_jds, t_dts, t_vals, nj, _to_int_scalar(tithi_index_at(noon))),
+            "nakshatra_end": _next_after(n_jds, n_dts, n_vals, nj, _to_int_scalar(nakshatra_index_at(noon))),
+            "yoga_end":      _next_after(y_jds, y_dts, y_vals, nj, _to_int_scalar(yoga_index_at(noon))),
+            "karana_end":    _next_after(k_jds, k_dts, k_vals, nj, _to_int_scalar(karana_index_at(noon))),
+        }
+    return result
+
+
+def get_upcoming_poojas(lat_r, lon_r, tz_name, from_date, days_ahead=7, month_system="both"):
+    """Returns poojas for next days_ahead days after from_date."""
+    tz = pytz.timezone(tz_name)
+    result = []
+    for offset in range(1, days_ahead + 1):
+        target = from_date + timedelta(days=offset)
+        target_local = tz.localize(datetime(target.year, target.month, target.day, 12, 0))
+        t = TS.from_datetime(target_local.astimezone(pytz.utc))
+
+        sun_sid, moon_sid = get_sidereal_lons_geocentric(t)
+        sun_sid  = float(np.atleast_1d(sun_sid)[0])
+        moon_sid = float(np.atleast_1d(moon_sid)[0])
+        angle = (moon_sid - sun_sid) % 360.0
+        tithi_number, paksha, tithi_name = calculate_tithi_and_paksha_from_angle(angle)
+
+        amanta_month, purnimanta_month = calculate_amanta_purnimanta_month_fast(
+            target_local, paksha, tz_name, lat_r, lon_r
+        )
+        day_of_week = target_local.strftime("%A")
+
+        fixed = check_fixed_festivals(target)
+        lunar = get_festivals_for_day(tithi_name, paksha, amanta_month, purnimanta_month,
+                                      month_system=month_system)
+        all_festivals = fixed + lunar
+
+        poojas = get_poojas_for_day(tithi_number, paksha, amanta_month, day_of_week, all_festivals)
+        has_poojas = not (len(poojas) == 1 and poojas[0]["name"] == "None")
+        if has_poojas:
+            result.append({
+                "date":         target.strftime("%Y-%m-%d"),
+                "day_of_week":  day_of_week,
+                "tithi":        tithi_name,
+                "tithi_number": tithi_number,
+                "paksha":       paksha,
+                "poojas":       poojas,
+            })
+    return result
+
+
 # ============================================================
 # 13) DAILY PANCHANGA (for monthly endpoint)
 # ============================================================
-def calculate_panchanga_for_date(latitude, longitude, target_date_naive, tz_name, month_system="both"):
+def calculate_panchanga_for_date(latitude, longitude, target_date_naive, tz_name, month_system="both", precomputed_end_times=None):
     lat_r = round_coord(latitude)
     lon_r = round_coord(longitude)
 
@@ -955,135 +1710,183 @@ def calculate_panchanga_for_date(latitude, longitude, target_date_naive, tz_name
     angle = (moon_sid - sun_sid) % 360.0
     tithi_number, paksha, tithi_name = calculate_tithi_and_paksha_from_angle(angle)
 
-    nakshatra_name = nakshatras[_to_int_scalar(nakshatra_index_at(t))]
-    yoga_name = yoga_names[_to_int_scalar(yoga_index_at(t))]
-    karana_name = karana_name_from_number(_to_int_scalar(karana_index_at(t)))
+    nak_idx        = _to_int_scalar(nakshatra_index_at(t))
+    nakshatra_name = nakshatras[nak_idx]
+    yoga_name      = yoga_names[_to_int_scalar(yoga_index_at(t))]
+    karana_name    = karana_name_from_number(_to_int_scalar(karana_index_at(t)))
 
-    moon_sign = rashi_names[int(moon_sid // 30) % 12]
-    ritu = calculate_ritu(sun_sid)
+    moon_sign      = rashi_names[int(moon_sid // 30) % 12]
+    sun_sign       = rashi_names[int(sun_sid  // 30) % 12]
+    ritu           = calculate_ritu(sun_sid)
+    tithi_nature   = TITHI_NATURE_NAMES[(tithi_number - 1) % 5]
+    nakshatra_pada = int((moon_sid % NAK_DEG) / (NAK_DEG / 4)) + 1
+    nakshatra_lord   = NAKSHATRA_LORDS[nak_idx]
+    nakshatra_deity  = NAKSHATRA_DEITIES[nak_idx]
 
-    date_ymd = target_date_naive.strftime("%Y-%m-%d")
+    graha_gochar = get_all_planet_positions(t)
+
+    date_ymd     = target_date_naive.strftime("%Y-%m-%d")
+    weekday      = target_date_naive.weekday()
+    next_date_ymd = (target_date_naive + timedelta(days=1)).strftime("%Y-%m-%d")
 
     sunrise_utc, sunset_utc = cached_sunrise_sunset(lat_r, lon_r, date_ymd, tz_name)
     sunrise = sunrise_utc.astimezone(tz)
-    sunset = sunset_utc.astimezone(tz)
+    sunset  = sunset_utc.astimezone(tz)
+    next_sunrise_utc, _ = cached_sunrise_sunset(lat_r, lon_r, next_date_ymd, tz_name)
+    next_sunrise = next_sunrise_utc.astimezone(tz)
 
     mr_utc, ms_utc = cached_moonrise_moonset(lat_r, lon_r, date_ymd, tz_name)
     moonrise = mr_utc.astimezone(tz) if mr_utc else None
-    moonset = ms_utc.astimezone(tz) if ms_utc else None
+    moonset  = ms_utc.astimezone(tz) if ms_utc else None
 
-    rahu_start, rahu_end = calculate_rahu_kaal(sunrise, sunset, target_date_naive.weekday())
-    gulika_start, gulika_end = calculate_gulika_kaal(sunrise, sunset, target_date_naive.weekday())
-    yamaganda_start, yamaganda_end = calculate_yamaganda_kaal(sunrise, sunset, target_date_naive.weekday())
-    abhijit_start, abhijit_end = calculate_abhijit_muhurat(sunrise, sunset)
-    brahma_start, brahma_end = calculate_brahma_muhurat(sunrise, sunset)
+    rahu_start,     rahu_end     = calculate_rahu_kaal(sunrise, sunset, weekday)
+    gulika_start,   gulika_end   = calculate_gulika_kaal(sunrise, sunset, weekday)
+    yamaganda_start,yamaganda_end= calculate_yamaganda_kaal(sunrise, sunset, weekday)
+    abhijit_start,  abhijit_end  = calculate_abhijit_muhurat(sunrise, sunset)
+    brahma_start,   brahma_end   = calculate_brahma_muhurat(sunrise, sunset)
 
-    # Samvat (your rule)
-    current_year = target_date_naive.year
+    choghadiya  = calculate_choghadiya(sunrise, sunset, next_sunrise, weekday)
+    durmuhurta  = calculate_durmuhurta(sunrise, sunset, weekday)
+
+    current_year  = target_date_naive.year
     current_month = target_date_naive.month
     if current_month < 4:
         vikram_samvat = (current_year - 1) + 57
-        shaka_samvat = (current_year - 1) - 78
+        shaka_samvat  = (current_year - 1) - 78
     else:
         vikram_samvat = current_year + 57
-        shaka_samvat = current_year - 78
+        shaka_samvat  = current_year - 78
 
     amanta_month, purnimanta_month = calculate_amanta_purnimanta_month_fast(
         target_date_local, paksha, tz_name, lat_r, lon_r
     )
+    is_adhik, amanta_month_display = detect_adhik_maas(
+        target_date_local, amanta_month, tz_name, lat_r, lon_r
+    )
 
     def tithi_context_at(local_dt):
         t_local = TS.from_datetime(local_dt.astimezone(pytz.utc))
-        sun_sid_local, moon_sid_local = get_sidereal_lons_geocentric(t_local)
-        sun_sid_local = float(np.atleast_1d(sun_sid_local)[0])
-        moon_sid_local = float(np.atleast_1d(moon_sid_local)[0])
-        angle_local = (moon_sid_local - sun_sid_local) % 360.0
-        tithi_number_local, paksha_local, tithi_name_local = calculate_tithi_and_paksha_from_angle(angle_local)
-        amanta_local, purnimanta_local = calculate_amanta_purnimanta_month_fast(
-            local_dt, paksha_local, tz_name, lat_r, lon_r
-        )
-        return tithi_name_local, paksha_local, amanta_local, purnimanta_local
+        ss, ms = get_sidereal_lons_geocentric(t_local)
+        ss = float(np.atleast_1d(ss)[0]); ms = float(np.atleast_1d(ms)[0])
+        ang = (ms - ss) % 360.0
+        _, p_local, tn_local = calculate_tithi_and_paksha_from_angle(ang)
+        am_local, pm_local   = calculate_amanta_purnimanta_month_fast(local_dt, p_local, tz_name, lat_r, lon_r)
+        return tn_local, p_local, am_local, pm_local
 
     def festivals_for_instant(local_dt):
-        tithi_name_local, paksha_local, amanta_local, purnimanta_local = tithi_context_at(local_dt)
-        return get_festivals_for_day(
-            tithi_name_local,
-            paksha_local,
-            amanta_local,
-            purnimanta_local,
-            month_system=month_system,
-        )
+        tn, p, am, pm = tithi_context_at(local_dt)
+        return get_festivals_for_day(tn, p, am, pm, month_system=month_system)
 
     def nisita_time_for_date():
-        date_ymd = target_date_naive.strftime("%Y-%m-%d")
-        sunset_utc = cached_sunrise_sunset(lat_r, lon_r, date_ymd, tz_name)[1]
-        next_date_ymd = (target_date_naive + timedelta(days=1)).strftime("%Y-%m-%d")
-        next_sunrise_utc = cached_sunrise_sunset(lat_r, lon_r, next_date_ymd, tz_name)[0]
-        sunset_local = sunset_utc.astimezone(tz)
-        next_sunrise_local = next_sunrise_utc.astimezone(tz)
-        return sunset_local + (next_sunrise_local - sunset_local) / 2
+        su = cached_sunrise_sunset(lat_r, lon_r, date_ymd, tz_name)[1]
+        ns = cached_sunrise_sunset(lat_r, lon_r, next_date_ymd, tz_name)[0]
+        sl = su.astimezone(tz); nsl = ns.astimezone(tz)
+        return sl + (nsl - sl) / 2
 
-    fixed_list = check_fixed_festivals(target_date_naive)
-    nisita_local = nisita_time_for_date()
-    nisita_list = festivals_for_instant(nisita_local)
-    if not nisita_list:
-        sunrise_utc = cached_sunrise_sunset(lat_r, lon_r, date_ymd, tz_name)[0]
-        sunrise_list = festivals_for_instant(sunrise_utc.astimezone(tz))
-        lunar_list = sunrise_list
-    else:
-        lunar_list = nisita_list
+    fixed_list  = check_fixed_festivals(target_date_naive)
+    nisita_list = festivals_for_instant(nisita_time_for_date())
+    lunar_list  = nisita_list if nisita_list else festivals_for_instant(sunrise_utc.astimezone(tz))
 
-    all_festivals = fixed_list + lunar_list
+    all_festivals  = fixed_list + lunar_list
     festival_today = all_festivals if all_festivals else ["None"]
 
     vrata_list = get_vratas_for_day(tithi_name, paksha, target_date_local.strftime("%A"), nakshatra_name)
     vrata_today = vrata_list if vrata_list else ["None"]
 
-    significance_text = generate_significance(paksha, nakshatra_name, moon_sign, yoga_name)
-    day_duration = (sunset - sunrise).total_seconds() / 3600
+    pooja_today = get_poojas_for_day(tithi_number, paksha, amanta_month,
+                                     target_date_local.strftime("%A"), all_festivals)
 
-    # Anga ending times (from sunrise of this day to next sunrise)
-    end_times = compute_angas_end_times(lat_r, lon_r, tz_name, date_ymd, now_local=target_date_local)
+    if precomputed_end_times is not None:
+        end_times = precomputed_end_times
+    else:
+        end_times = compute_angas_end_times(lat_r, lon_r, tz_name, date_ymd, now_local=target_date_local)
+
+    nak_end_local = end_times["nakshatra_end"]
+    nak_end_utc   = nak_end_local.astimezone(pytz.utc) if nak_end_local else None
+    now_utc       = target_date_local.astimezone(pytz.utc)
+    nak_start_utc = estimate_nakshatra_start_utc(moon_sid, now_utc, nak_end_utc)
+    varjyam       = calculate_varjyam(nak_idx, nak_start_utc, nak_end_utc, tz)
+
+    amrit_windows = [[s["start"], s["end"]] for s in choghadiya["day"] + choghadiya["night"]
+                     if s["name"] == "Amrit"]
+    amrit_kaal = {
+        "windows": amrit_windows,
+        "significance": ("Most auspicious window of the day based on lunar nakshatra. "
+                         "Begin important work, perform puja, start journeys, or take medicine "
+                         "during Amrit Kaal for the best results."),
+    }
+
+    significance_text = generate_significance(
+        tithi_name, tithi_nature, paksha, nakshatra_name, nakshatra_lord,
+        yoga_name, moon_sign, sun_sign, ritu,
+        target_date_local.strftime("%A"), festival_today, vrata_today, is_adhik
+    )
+    day_duration = (sunset - sunrise).total_seconds() / 3600
 
     return {
         "date": date_ymd,
         "day_of_week": target_date_local.strftime("%A"),
+        # --- Five Angas ---
         "tithi": tithi_name,
         "tithi_end": format_dt_local(end_times["tithi_end"]),
         "tithi_number": tithi_number,
+        "tithi_nature": tithi_nature,
+        "tithi_nature_significance": TITHI_NATURE_SIGNIFICANCE[tithi_nature],
         "paksha": paksha,
         "nakshatra": nakshatra_name,
         "nakshatra_end": format_dt_local(end_times["nakshatra_end"]),
+        "nakshatra_pada": nakshatra_pada,
+        "nakshatra_pada_significance": NAKSHATRA_PADA_DESC[nakshatra_pada - 1],
+        "nakshatra_lord": nakshatra_lord,
+        "nakshatra_deity": nakshatra_deity,
         "karana": karana_name,
         "karana_end": format_dt_local(end_times["karana_end"]),
         "yoga": yoga_name,
         "yoga_end": format_dt_local(end_times["yoga_end"]),
+        # --- Signs & Seasons ---
         "moon_sign": moon_sign,
+        "sun_sign": sun_sign,
         "ritu": ritu,
-        "amanta_month": amanta_month,
+        # --- Lunar Calendar ---
+        "amanta_month": amanta_month_display,
         "purnimanta_month": purnimanta_month,
+        "adhik_maas": is_adhik,
         "vikram_samvat": vikram_samvat,
         "shaka_samvat": shaka_samvat,
+        # --- Raw angles ---
         "sun_moon_angle": angle,
         "sun_sidereal": sun_sid,
+        # --- Solar/Lunar times ---
         "sunrise": sunrise.strftime("%I:%M:%S %p"),
-        "sunset": sunset.strftime("%I:%M:%S %p"),
+        "sunset":  sunset.strftime("%I:%M:%S %p"),
         "moonrise": format_time_with_date_if_needed(moonrise, date_ymd),
-        "moonset": format_time_with_date_if_needed(moonset, date_ymd),
+        "moonset":  format_time_with_date_if_needed(moonset,  date_ymd),
         "day_duration": f"{day_duration:.2f} hours",
+        # --- Planetary transits ---
+        "graha_gochar": graha_gochar,
+        # --- Festivals / Vratas / Poojas ---
         "festival_today": festival_today,
         "vrata_today": vrata_today,
+        "pooja_today": pooja_today,
+        # --- Significance ---
         "significance": significance_text,
+        # --- Muhurats ---
         "subh_muhurat": [
-            {"abhijit": [abhijit_start.strftime("%I:%M:%S %p"), abhijit_end.strftime("%I:%M:%S %p")]},
-            {"brahma": [brahma_start.strftime("%I:%M:%S %p"), brahma_end.strftime("%I:%M:%S %p")]},
+            {"abhijit":      [abhijit_start.strftime("%I:%M:%S %p"), abhijit_end.strftime("%I:%M:%S %p")]},
+            {"brahma":       [brahma_start.strftime("%I:%M:%S %p"),  brahma_end.strftime("%I:%M:%S %p")]},
         ],
         "asubh_muhurat": [
-            {"rahu": [rahu_start.strftime("%I:%M:%S %p"), rahu_end.strftime("%I:%M:%S %p")]},
-            {"gulika": [gulika_start.strftime("%I:%M:%S %p"), gulika_end.strftime("%I:%M:%S %p")]},
-            {"yamaganda": [yamaganda_start.strftime("%I:%M:%S %p"), yamaganda_end.strftime("%I:%M:%S %p")]},
+            {"rahu":     [rahu_start.strftime("%I:%M:%S %p"),      rahu_end.strftime("%I:%M:%S %p")]},
+            {"gulika":   [gulika_start.strftime("%I:%M:%S %p"),    gulika_end.strftime("%I:%M:%S %p")]},
+            {"yamaganda":[yamaganda_start.strftime("%I:%M:%S %p"), yamaganda_end.strftime("%I:%M:%S %p")]},
         ],
+        "choghadiya":  choghadiya,
+        "durmuhurta":  durmuhurta,
+        "amrit_kaal":  amrit_kaal,
+        "varjyam":     varjyam,
     }
+    result["daily_summary"] = generate_daily_summary(result)
+    return result
 
 # ============================================================
 # 14) ROUTES
@@ -1117,111 +1920,202 @@ def astrology_api_view():
         # Current angas at now (geocentric)
         t_now = TS.from_datetime(now_local.astimezone(pytz.utc))
         sun_sid, moon_sid = get_sidereal_lons_geocentric(t_now)
-        sun_sid = float(np.atleast_1d(sun_sid)[0])
+        sun_sid  = float(np.atleast_1d(sun_sid)[0])
         moon_sid = float(np.atleast_1d(moon_sid)[0])
 
         angle = (moon_sid - sun_sid) % 360.0
         tithi_number, paksha, tithi_name = calculate_tithi_and_paksha_from_angle(angle)
-        nakshatra_name = nakshatras[_to_int_scalar(nakshatra_index_at(t_now))]
-        yoga_name = yoga_names[_to_int_scalar(yoga_index_at(t_now))]
-        karana_name = karana_name_from_number(_to_int_scalar(karana_index_at(t_now)))
+        nak_idx        = _to_int_scalar(nakshatra_index_at(t_now))
+        nakshatra_name = nakshatras[nak_idx]
+        yoga_name      = yoga_names[_to_int_scalar(yoga_index_at(t_now))]
+        karana_name    = karana_name_from_number(_to_int_scalar(karana_index_at(t_now)))
+
+        moon_sign       = rashi_names[int(moon_sid // 30) % 12]
+        sun_sign        = rashi_names[int(sun_sid  // 30) % 12]
+        ritu            = calculate_ritu(sun_sid)
+        tithi_nature    = TITHI_NATURE_NAMES[(tithi_number - 1) % 5]
+        nakshatra_pada  = int((moon_sid % NAK_DEG) / (NAK_DEG / 4)) + 1
+        nakshatra_lord  = NAKSHATRA_LORDS[nak_idx]
+        nakshatra_deity = NAKSHATRA_DEITIES[nak_idx]
+        graha_gochar    = get_all_planet_positions(t_now)
+
+        weekday      = now_local.weekday()
+        next_date_ymd = (now_local.date() + timedelta(days=1)).strftime("%Y-%m-%d")
 
         # Sunrise/Sunset, Moonrise/Moonset
         sunrise_utc, sunset_utc = cached_sunrise_sunset(lat_r, lon_r, date_ymd, timezone_str)
         sunrise = sunrise_utc.astimezone(tz)
-        sunset = sunset_utc.astimezone(tz)
+        sunset  = sunset_utc.astimezone(tz)
+        next_sunrise_utc, _ = cached_sunrise_sunset(lat_r, lon_r, next_date_ymd, timezone_str)
+        next_sunrise = next_sunrise_utc.astimezone(tz)
 
         mr_utc, ms_utc = cached_moonrise_moonset(lat_r, lon_r, date_ymd, timezone_str)
         moonrise = mr_utc.astimezone(tz) if mr_utc else None
-        moonset = ms_utc.astimezone(tz) if ms_utc else None
+        moonset  = ms_utc.astimezone(tz) if ms_utc else None
 
         # Muhurats
-        rahu_start, rahu_end = calculate_rahu_kaal(sunrise, sunset, now_local.weekday())
-        gulika_start, gulika_end = calculate_gulika_kaal(sunrise, sunset, now_local.weekday())
-        yamaganda_start, yamaganda_end = calculate_yamaganda_kaal(sunrise, sunset, now_local.weekday())
-        abhijit_start, abhijit_end = calculate_abhijit_muhurat(sunrise, sunset)
-        brahma_start, brahma_end = calculate_brahma_muhurat(sunrise, sunset)
+        rahu_start,     rahu_end     = calculate_rahu_kaal(sunrise, sunset, weekday)
+        gulika_start,   gulika_end   = calculate_gulika_kaal(sunrise, sunset, weekday)
+        yamaganda_start,yamaganda_end= calculate_yamaganda_kaal(sunrise, sunset, weekday)
+        abhijit_start,  abhijit_end  = calculate_abhijit_muhurat(sunrise, sunset)
+        brahma_start,   brahma_end   = calculate_brahma_muhurat(sunrise, sunset)
 
-        moon_sign = rashi_names[int(moon_sid // 30) % 12]
-        ritu = calculate_ritu(sun_sid)
+        choghadiya = calculate_choghadiya(sunrise, sunset, next_sunrise, weekday)
+        durmuhurta = calculate_durmuhurta(sunrise, sunset, weekday)
+        amrit_windows = [[s["start"], s["end"]] for s in choghadiya["day"] + choghadiya["night"]
+                         if s["name"] == "Amrit"]
+        amrit_kaal = {
+            "windows": amrit_windows,
+            "significance": ("Most auspicious window of the day based on lunar nakshatra. "
+                             "Begin important work, perform puja, start journeys, or take medicine "
+                             "during Amrit Kaal for the best results."),
+        }
 
-        # Samvat (your rule)
-        current_year = now_local.year
+        current_year  = now_local.year
         current_month = now_local.month
         if current_month < 4:
             vikram_samvat = (current_year - 1) + 57
-            shaka_samvat = (current_year - 1) - 78
+            shaka_samvat  = (current_year - 1) - 78
         else:
             vikram_samvat = current_year + 57
-            shaka_samvat = current_year - 78
+            shaka_samvat  = current_year - 78
 
         amanta_month, purnimanta_month = calculate_amanta_purnimanta_month_fast(
             now_local, paksha, timezone_str, lat_r, lon_r
         )
+        is_adhik, amanta_month_display = detect_adhik_maas(
+            now_local, amanta_month, timezone_str, lat_r, lon_r
+        )
 
         fixed_list = check_fixed_festivals(now_local.replace(tzinfo=None))
-        lunar_list = get_festivals_for_day(
-            tithi_name,
-            paksha,
-            amanta_month,
-            purnimanta_month,
-            month_system=month_system,
-        )
-        all_festivals = fixed_list + lunar_list
+        lunar_list = get_festivals_for_day(tithi_name, paksha, amanta_month, purnimanta_month,
+                                           month_system=month_system)
+        all_festivals  = fixed_list + lunar_list
         festival_today = all_festivals if all_festivals else ["None"]
 
         vrata_today = get_vratas_for_day(tithi_name, paksha, now_local.strftime("%A"), nakshatra_name)
         vrata_today = vrata_today if vrata_today else ["None"]
 
-        day_duration = (sunset - sunrise).total_seconds() / 3600
-        significance_text = generate_significance(paksha, nakshatra_name, moon_sign, yoga_name)
+        pooja_today = get_poojas_for_day(tithi_number, paksha, amanta_month,
+                                         now_local.strftime("%A"), all_festivals)
+        upcoming_poojas = get_upcoming_poojas(
+            lat_r, lon_r, timezone_str, now_local.date(), days_ahead=7,
+            month_system=month_system
+        )
 
-        subh_muhurat = [
-            {"abhijit": [abhijit_start.strftime("%I:%M:%S %p"), abhijit_end.strftime("%I:%M:%S %p")]},
-            {"brahma": [brahma_start.strftime("%I:%M:%S %p"), brahma_end.strftime("%I:%M:%S %p")]},
-        ]
-        asubh_muhurat = [
-            {"rahu": [rahu_start.strftime("%I:%M:%S %p"), rahu_end.strftime("%I:%M:%S %p")]},
-            {"gulika": [gulika_start.strftime("%I:%M:%S %p"), gulika_end.strftime("%I:%M:%S %p")]},
-            {"yamaganda": [yamaganda_start.strftime("%I:%M:%S %p"), yamaganda_end.strftime("%I:%M:%S %p")]},
-        ]
+        nak_end_local = end_times["nakshatra_end"]
+        nak_end_utc   = nak_end_local.astimezone(pytz.utc) if nak_end_local else None
+        now_utc_dt    = now_local.astimezone(pytz.utc)
+        nak_start_utc = estimate_nakshatra_start_utc(moon_sid, now_utc_dt, nak_end_utc)
+        varjyam       = calculate_varjyam(nak_idx, nak_start_utc, nak_end_utc, tz)
+
+        day_duration = (sunset - sunrise).total_seconds() / 3600
+        significance_text = generate_significance(
+            tithi_name, tithi_nature, paksha, nakshatra_name, nakshatra_lord,
+            yoga_name, moon_sign, sun_sign, ritu,
+            now_local.strftime("%A"), festival_today, vrata_today, is_adhik
+        )
 
         return jsonify({
-            "tithi": tithi_name,
-            "tithi_end": format_dt_local(end_times["tithi_end"]),
-            "nakshatra": nakshatra_name,
-            "nakshatra_end": format_dt_local(end_times["nakshatra_end"]),
-            "karana": karana_name,
-            "karana_end": format_dt_local(end_times["karana_end"]),
-            "yoga": yoga_name,
-            "yoga_end": format_dt_local(end_times["yoga_end"]),
-
-            "tithi_number": tithi_number,
-            "paksha": paksha,
-            "day_of_week": now_local.strftime("%A"),
-            "date": date_ymd,
-            "day_duration": f"{day_duration:.2f} hours",
-            "moon_sign": moon_sign,
-            "ritu": ritu,
-            "amanta_month": amanta_month,
+            # --- Five Angas ---
+            "tithi":           tithi_name,
+            "tithi_end":       format_dt_local(end_times["tithi_end"]),
+            "tithi_number":    tithi_number,
+            "tithi_nature":    tithi_nature,
+            "tithi_nature_significance": TITHI_NATURE_SIGNIFICANCE[tithi_nature],
+            "paksha":          paksha,
+            "nakshatra":       nakshatra_name,
+            "nakshatra_end":   format_dt_local(end_times["nakshatra_end"]),
+            "nakshatra_pada":  nakshatra_pada,
+            "nakshatra_pada_significance": NAKSHATRA_PADA_DESC[nakshatra_pada - 1],
+            "nakshatra_lord":  nakshatra_lord,
+            "nakshatra_deity": nakshatra_deity,
+            "karana":          karana_name,
+            "karana_end":      format_dt_local(end_times["karana_end"]),
+            "yoga":            yoga_name,
+            "yoga_end":        format_dt_local(end_times["yoga_end"]),
+            # --- Signs & Seasons ---
+            "moon_sign":  moon_sign,
+            "sun_sign":   sun_sign,
+            "ritu":       ritu,
+            # --- Lunar Calendar ---
+            "amanta_month":     amanta_month_display,
             "purnimanta_month": purnimanta_month,
-            "vikram_samvat": vikram_samvat,
-            "shaka_samvat": shaka_samvat,
+            "adhik_maas":       is_adhik,
+            "vikram_samvat":    vikram_samvat,
+            "shaka_samvat":     shaka_samvat,
+            # --- Raw angles ---
             "sun_moon_angle": angle,
-            "sun_sidereal": sun_sid,
-
-            "sunrise": sunrise.strftime("%I:%M:%S %p"),
-            "sunset": sunset.strftime("%I:%M:%S %p"),
-            "moonrise": format_time_with_date_if_needed(moonrise, date_ymd),
-            "moonset": format_time_with_date_if_needed(moonset, date_ymd),
-
-            "significance": significance_text,
-            "time_zone": timezone_str,
-            "festival_today": festival_today,
-            "vrata_today": vrata_today,
+            "sun_sidereal":   sun_sid,
+            # --- Date/Time ---
+            "day_of_week":  now_local.strftime("%A"),
+            "date":         date_ymd,
+            "day_duration": f"{day_duration:.2f} hours",
+            "time_zone":    timezone_str,
             "month_system": month_system,
-            "subh_muhurat": subh_muhurat,
-            "asubh_muhurat": asubh_muhurat,
+            # --- Solar/Lunar times ---
+            "sunrise":  sunrise.strftime("%I:%M:%S %p"),
+            "sunset":   sunset.strftime("%I:%M:%S %p"),
+            "moonrise": format_time_with_date_if_needed(moonrise, date_ymd),
+            "moonset":  format_time_with_date_if_needed(moonset,  date_ymd),
+            # --- Planetary transits ---
+            "graha_gochar": graha_gochar,
+            # --- Festivals / Vratas / Poojas ---
+            "festival_today":  festival_today,
+            "vrata_today":     vrata_today,
+            "pooja_today":     pooja_today,
+            "upcoming_poojas": upcoming_poojas,
+            # --- Significance ---
+            "significance": significance_text,
+            # --- Muhurats ---
+            "subh_muhurat": [
+                {"abhijit": [abhijit_start.strftime("%I:%M:%S %p"), abhijit_end.strftime("%I:%M:%S %p")]},
+                {"brahma":  [brahma_start.strftime("%I:%M:%S %p"),  brahma_end.strftime("%I:%M:%S %p")]},
+            ],
+            "asubh_muhurat": [
+                {"rahu":     [rahu_start.strftime("%I:%M:%S %p"),      rahu_end.strftime("%I:%M:%S %p")]},
+                {"gulika":   [gulika_start.strftime("%I:%M:%S %p"),    gulika_end.strftime("%I:%M:%S %p")]},
+                {"yamaganda":[yamaganda_start.strftime("%I:%M:%S %p"), yamaganda_end.strftime("%I:%M:%S %p")]},
+            ],
+            "choghadiya":    choghadiya,
+            "durmuhurta":    durmuhurta,
+            "amrit_kaal":    amrit_kaal,
+            "varjyam":       varjyam,
+            "daily_summary": generate_daily_summary({
+                "day_of_week": now_local.strftime("%A"), "date": date_ymd,
+                "paksha": paksha, "amanta_month": amanta_month_display,
+                "vikram_samvat": vikram_samvat, "shaka_samvat": shaka_samvat,
+                "adhik_maas": is_adhik, "tithi": tithi_name,
+                "tithi_number": tithi_number, "tithi_nature": tithi_nature,
+                "tithi_nature_significance": TITHI_NATURE_SIGNIFICANCE[tithi_nature],
+                "tithi_end": format_dt_local(end_times["tithi_end"]),
+                "nakshatra": nakshatra_name, "nakshatra_pada": nakshatra_pada,
+                "nakshatra_pada_significance": NAKSHATRA_PADA_DESC[nakshatra_pada - 1],
+                "nakshatra_end": format_dt_local(end_times["nakshatra_end"]),
+                "nakshatra_lord": nakshatra_lord,
+                "yoga": yoga_name, "yoga_end": format_dt_local(end_times["yoga_end"]),
+                "karana": karana_name, "karana_end": format_dt_local(end_times["karana_end"]),
+                "moon_sign": moon_sign, "sun_sign": sun_sign, "ritu": ritu,
+                "sunrise": sunrise.strftime("%I:%M:%S %p"),
+                "sunset": sunset.strftime("%I:%M:%S %p"),
+                "moonrise": format_time_with_date_if_needed(moonrise, date_ymd),
+                "moonset": format_time_with_date_if_needed(moonset, date_ymd),
+                "day_duration": f"{day_duration:.2f} hours",
+                "significance": significance_text,
+                "festival_today": festival_today, "vrata_today": vrata_today,
+                "pooja_today": pooja_today, "graha_gochar": graha_gochar,
+                "subh_muhurat": [
+                    {"abhijit": [abhijit_start.strftime("%I:%M:%S %p"), abhijit_end.strftime("%I:%M:%S %p")]},
+                    {"brahma": [brahma_start.strftime("%I:%M:%S %p"), brahma_end.strftime("%I:%M:%S %p")]},
+                ],
+                "asubh_muhurat": [
+                    {"rahu": [rahu_start.strftime("%I:%M:%S %p"), rahu_end.strftime("%I:%M:%S %p")]},
+                    {"gulika": [gulika_start.strftime("%I:%M:%S %p"), gulika_end.strftime("%I:%M:%S %p")]},
+                    {"yamaganda": [yamaganda_start.strftime("%I:%M:%S %p"), yamaganda_end.strftime("%I:%M:%S %p")]},
+                ],
+                "choghadiya": choghadiya, "durmuhurta": durmuhurta,
+                "amrit_kaal": amrit_kaal, "varjyam": varjyam,
+            }),
         })
 
     except Exception as e:
@@ -1230,6 +2124,10 @@ def astrology_api_view():
 @app.route("/monthly-panchanga-page")
 def monthly_panchanga_page():
     return render_template("monthly_panchanga.html")
+
+@app.route("/panchanga-page")
+def panchanga_page():
+    return render_template("panchanga.html")
 
 @app.route("/monthly-panchanga", methods=["POST"])
 def monthly_panchanga_api():
@@ -1272,9 +2170,13 @@ def monthly_panchanga_api():
             cached_sunrise_sunset(lat_r, lon_r, date_ymd, timezone_str)
             cached_moonrise_moonset(lat_r, lon_r, date_ymd, timezone_str)
 
+        # Batch-compute all anga end times (4 find_discrete calls vs 30×4=120)
+        batch_end_times = compute_month_anga_end_times_batch(year, month, timezone_str)
+
         monthly_data = []
         for day in range(1, num_days + 1):
             target_date = datetime(year, month, day)
+            date_key = target_date.strftime("%Y-%m-%d")
             monthly_data.append(
                 calculate_panchanga_for_date(
                     latitude,
@@ -1282,6 +2184,7 @@ def monthly_panchanga_api():
                     target_date,
                     timezone_str,
                     month_system=month_system,
+                    precomputed_end_times=batch_end_times.get(date_key),
                 )
             )
 
@@ -1337,11 +2240,17 @@ def panchanga_date_api():
             month_system=month_system,
         )
 
+        upcoming_poojas = get_upcoming_poojas(
+            lat_r, lon_r, timezone_str, target_date.date(), days_ahead=7,
+            month_system=month_system
+        )
+
         return jsonify({
             "latitude": latitude,
             "longitude": longitude,
             "timezone": timezone_str,
             "panchanga_data": panchanga_data,
+            "upcoming_poojas": upcoming_poojas,
         })
 
     except Exception as e:
