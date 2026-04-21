@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panchanga — Daily Hindu Calendar</title>
+  <style>
+    :root {
+      --saffron: #e67e22;
+      --deep-saffron: #c0392b;
+      --gold: #f4a838;
+      --gold-light: #fffbf0;
+      --indigo: #2c3e7a;
+      --green-auspicious: #1a7f4b;
+      --red-inauspicious: #c62828;
+      --text: #2c1810;
+      --muted: #777;
+      --border: #e8d5b0;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #f5efe6;
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Top bar ───────────────────────────────── */
+    .topbar {
+      background: linear-gradient(135deg, #c0392b 0%, #e67e22 50%, #f39c12 100%);
+      color: #fff;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 56px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.2);
+    }
+    .topbar h1 { font-size: 1.25rem; font-weight: 700; letter-spacing: .5px; }
+    .topbar .subtitle { font-size: .75rem; opacity: .85; }
+
+    /* ── Layout ─────────────────────────────────── */
+    .layout {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 0;
+      min-height: calc(100vh - 56px);
+    }
+
+    /* ── Sidebar ─────────────────────────────────── */
+    .sidebar {
+      background: #fff;
+      border-right: 1px solid var(--border);
+      padding: 20px;
+      overflow-y: auto;
+    }
+    .sidebar h2 { font-size: .85rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 14px; }
+
+    .field-group { margin-bottom: 14px; }
+    .field-group label { display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 4px; }
+    .field-group input, .field-group select {
+      width: 100%; padding: 8px 10px;
+      border: 1.5px solid var(--border); border-radius: 6px;
+      font-size: 13px; color: var(--text);
+      background: #fffbf5;
+      transition: border-color .2s;
+    }
+    .field-group input:focus, .field-group select:focus {
+      outline: none; border-color: var(--saffron);
+    }
+
+    .btn-primary {
+      width: 100%; padding: 10px;
+      background: linear-gradient(135deg, #c0392b, #e67e22);
+      color: #fff; border: none; border-radius: 7px;
+      font-size: 14px; font-weight: 700; cursor: pointer;
+      transition: opacity .2s, transform .1s;
+    }
+    .btn-primary:hover { opacity: .9; }
+    .btn-primary:active { transform: scale(.98); }
+    .btn-primary:disabled { opacity: .55; cursor: not-allowed; }
+
+    .preset-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+    .preset-btn {
+      padding: 5px 10px; background: var(--gold-light);
+      border: 1px solid var(--gold); border-radius: 14px;
+      font-size: 11px; font-weight: 600; color: var(--text);
+      cursor: pointer; transition: background .15s;
+    }
+    .preset-btn:hover { background: #ffe9a0; }
+
+    .tab-row { display: flex; gap: 0; margin-bottom: 18px; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+    .tab-btn { flex: 1; padding: 7px 4px; background: #fff; border: none; font-size: 12px; font-weight: 600; color: #888; cursor: pointer; transition: background .15s; }
+    .tab-btn.active { background: linear-gradient(135deg, #c0392b, #e67e22); color: #fff; }
+
+    .divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+    /* ── Main content ────────────────────────────── */
+    .main {
+      padding: 24px;
+      overflow-y: auto;
+      max-height: calc(100vh - 56px);
+    }
+
+    /* ── Status / loading ──────────────────────────── */
+    .loader { text-align: center; padding: 60px 20px; color: var(--saffron); }
+    .loader .spinner {
+      width: 48px; height: 48px;
+      border: 4px solid #f0e0c8; border-top-color: var(--saffron);
+      border-radius: 50%; animation: spin 1s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .empty-state { text-align: center; padding: 80px 20px; color: var(--muted); }
+    .empty-state .icon { font-size: 3rem; margin-bottom: 12px; }
+    .error-box { background: #fff0f0; border: 1px solid #f5c6cb; border-radius: 8px; padding: 14px; color: #c62828; margin-bottom: 16px; }
+
+    /* ── Section cards ───────────────────────────── */
+    .section-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+      margin-bottom: 16px;
+    }
+    .section-card h3 {
+      font-size: .95rem; font-weight: 700; color: var(--deep-saffron);
+      border-bottom: 2px solid var(--gold);
+      padding-bottom: 8px; margin-bottom: 14px;
+      display: flex; align-items: center; gap: 7px;
+    }
+
+    /* ── Day header ──────────────────────────────── */
+    .day-header {
+      background: linear-gradient(135deg, #2c1810 0%, #5c3317 60%, #8b5e3c 100%);
+      color: #fff;
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .day-header h2 { font-size: 1.5rem; font-weight: 800; }
+    .day-header .meta { font-size: .8rem; opacity: .8; margin-top: 3px; }
+    .day-header .samvat { text-align: right; }
+    .day-header .samvat .val { font-size: 1.1rem; font-weight: 700; color: var(--gold); }
+    .day-header .samvat .lbl { font-size: .7rem; opacity: .75; }
+
+    /* ── Five angas grid ─────────────────────────── */
+    .anga-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+    }
+    @media (max-width: 900px) { .anga-grid { grid-template-columns: repeat(3, 1fr); } }
+    .anga-card {
+      background: var(--gold-light);
+      border: 1px solid var(--gold);
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .anga-card .alabel { font-size: 10px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: .5px; }
+    .anga-card .avalue { font-size: 1rem; font-weight: 700; color: var(--text); margin-top: 3px; }
+    .anga-card .asub { font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+
+    /* ── Row list ────────────────────────────────── */
+    .row-list .row {
+      display: flex; justify-content: space-between; align-items: baseline;
+      padding: 7px 0; border-bottom: 1px solid #f0e8d8;
+      font-size: 13px;
+    }
+    .row-list .row:last-child { border-bottom: none; }
+    .row-list .rk { font-weight: 600; color: #555; }
+    .row-list .rv { color: var(--text); text-align: right; }
+
+    /* ── Badge ───────────────────────────────────── */
+    .badge {
+      display: inline-block; padding: 2px 10px;
+      border-radius: 12px; font-size: 11px; font-weight: 700;
+      color: #fff; margin: 2px;
+    }
+    .badge-green { background: #2e7d32; }
+    .badge-amber { background: #f57c00; }
+    .badge-red   { background: #c62828; }
+    .badge-blue  { background: #1565c0; }
+    .badge-gold  { background: #c79b00; }
+
+    /* ── Good / bad section ──────────────────────── */
+    .good-section { border-color: #a5d6a7 !important; background: #f1f8e9; }
+    .bad-section  { border-color: #ef9a9a !important; background: #fff3f3; }
+
+    /* ── Time row ────────────────────────────────── */
+    .time-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 6px 0; border-bottom: 1px dotted #ddd; font-size: 13px;
+    }
+    .time-row:last-child { border-bottom: none; }
+    .time-icon { font-size: 1rem; width: 22px; text-align: center; }
+    .time-label { font-weight: 600; color: #555; flex: 1; }
+    .time-val { color: var(--text); font-weight: 500; }
+
+    /* ── Choghadiya ──────────────────────────────── */
+    .chog-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+    }
+    @media (max-width: 700px) { .chog-grid { grid-template-columns: 1fr; } }
+    .chog-title { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: .5px; }
+    .chog-slot {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 8px; border-radius: 6px;
+      margin-bottom: 4px; font-size: 13px;
+    }
+    .chog-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .chog-name { font-weight: 700; min-width: 60px; }
+    .chog-time { color: var(--muted); font-size: 12px; }
+    .chog-quality { font-size: 11px; margin-left: auto; font-weight: 600; }
+    /* slot background tints */
+    .slot-amrit  { background: #e8f5e9; }
+    .slot-shubh  { background: #f1f8e9; }
+    .slot-labh   { background: #f9fbe7; }
+    .slot-char   { background: #fff8e1; }
+    .slot-udveg  { background: #fff3e0; }
+    .slot-kaal   { background: #fce4ec; }
+    .slot-rog    { background: #fff0f0; }
+
+    /* ── Planet grid ─────────────────────────────── */
+    .planet-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 8px;
+    }
+    .planet-card {
+      background: #f8f0ff;
+      border: 1px solid #d4b8f0;
+      border-radius: 8px;
+      padding: 10px;
+      text-align: center;
+    }
+    .planet-card .pname { font-size: 11px; font-weight: 700; color: #666; text-transform: uppercase; }
+    .planet-card .prashi { font-size: .95rem; font-weight: 700; color: #3d007a; }
+    .planet-card .plon { font-size: 10px; color: #999; margin-top: 1px; }
+
+    /* ── Pooja cards ─────────────────────────────── */
+    .pooja-list .pooja-item {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 10px 0; border-bottom: 1px solid #f0e8d8;
+    }
+    .pooja-list .pooja-item:last-child { border-bottom: none; }
+    .pooja-icon { font-size: 1.3rem; flex-shrink: 0; }
+    .pooja-name { font-weight: 700; font-size: 14px; }
+    .pooja-reason { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    /* ── Upcoming poojas ─────────────────────────── */
+    .upcoming-item {
+      background: var(--gold-light);
+      border: 1px solid var(--gold);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+    .upcoming-item .udate { font-size: 12px; font-weight: 700; color: var(--saffron); }
+    .upcoming-item .utithi { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .upcoming-item .upoojas { margin-top: 8px; }
+
+    /* ── Monthly calendar ────────────────────────── */
+    .month-calendar {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+    }
+    .cal-header { font-size: 11px; font-weight: 700; text-align: center; color: var(--muted); padding: 4px 0; }
+    .cal-day {
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 6px 4px; font-size: 11px; cursor: pointer;
+      transition: background .15s; min-height: 72px;
+      background: #fff;
+    }
+    .cal-day:hover { background: #fffbf0; border-color: var(--gold); }
+    .cal-day.festival-day { border-color: #c0392b; background: #fff5f5; }
+    .cal-day.selected { border-color: var(--saffron); background: #fff3e0; box-shadow: 0 0 0 2px var(--saffron); }
+    .cal-day.empty { background: transparent; border-color: transparent; cursor: default; }
+    .cal-day .cdate { font-weight: 800; font-size: 13px; color: var(--text); }
+    .cal-day .ctithi { font-size: 10px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cal-day .cfest { font-size: 9px; color: #c0392b; font-weight: 600; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cal-day .cvrata { font-size: 9px; color: #1565c0; font-weight: 600; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cal-day .sunrise-sunset { font-size: 9px; color: #999; margin-top: 2px; }
+
+    /* ── Significance box ────────────────────────── */
+    .sig-box {
+      background: #fffbf0;
+      border-left: 4px solid var(--gold);
+      border-radius: 0 8px 8px 0;
+      padding: 14px 16px;
+      font-size: 14px;
+      color: #3d2c00;
+      line-height: 1.7;
+    }
+
+    /* ── Two-column info ─────────────────────────── */
+    .info-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 650px) { .info-grid-2 { grid-template-columns: 1fr; } }
+    .info-blurb {
+      background: #fffbf0; border: 1px solid #f4c96e;
+      border-radius: 6px; padding: 10px 12px;
+      font-size: 12px; color: #5c3317; line-height: 1.5;
+    }
+
+    /* ── Daily summary HTML rendered ─────────────── */
+    #daily-summary-html { margin-top: 0; }
+
+    /* ── Tabs for main view ──────────────────────── */
+    .main-tabs { display: flex; gap: 0; margin-bottom: 20px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #fff; }
+    .main-tab { flex: 1; padding: 10px; background: #fff; border: none; font-size: 13px; font-weight: 600; color: #888; cursor: pointer; transition: background .15s; border-right: 1px solid var(--border); }
+    .main-tab:last-child { border-right: none; }
+    .main-tab.active { background: linear-gradient(135deg, #c0392b, #e67e22); color: #fff; }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* ── Month nav ────────────────────────────────── */
+    .month-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .month-nav button {
+      background: var(--gold-light); border: 1px solid var(--gold);
+      padding: 6px 14px; border-radius: 6px; cursor: pointer; font-weight: 700; font-size: 14px;
+    }
+    .month-nav button:hover { background: #ffe9a0; }
+    .month-nav h3 { font-size: 1.1rem; font-weight: 800; }
+
+    /* ── Responsive ──────────────────────────────── */
+    @media (max-width: 768px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
+      .anga-grid { grid-template-columns: repeat(2, 1fr); }
+      .month-calendar { grid-template-columns: repeat(7, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <div>
+      <h1>🕉 Panchanga</h1>
+      <div class="subtitle">Vedic Hindu Calendar &amp; Daily Guide</div>
+    </div>
+    <div id="current-time" style="font-size:.8rem;opacity:.85;text-align:right"></div>
+  </div>
+
+  <div class="layout">
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <h2>Location &amp; Date</h2>
+
+      <div class="preset-btns">
+        <button class="preset-btn" onclick="setPreset(27.7172,85.3240,'Kathmandu')">Kathmandu</button>
+        <button class="preset-btn" onclick="setPreset(28.6139,77.2090,'Delhi')">Delhi</button>
+        <button class="preset-btn" onclick="setPreset(19.0760,72.8777,'Mumbai')">Mumbai</button>
+        <button class="preset-btn" onclick="setPreset(13.0827,80.2707,'Chennai')">Chennai</button>
+        <button class="preset-btn" onclick="setPreset(22.5726,88.3639,'Kolkata')">Kolkata</button>
+      </div>
+
+      <div class="field-group">
+        <label>Latitude</label>
+        <input type="number" id="lat" step="any" value="27.7172">
+      </div>
+      <div class="field-group">
+        <label>Longitude</label>
+        <input type="number" id="lon" step="any" value="85.3240">
+      </div>
+      <div class="field-group">
+        <label>Lunar Month System</label>
+        <select id="month-system">
+          <option value="both">Both (Amanta + Purnimanta)</option>
+          <option value="amanta">Amanta (South India)</option>
+          <option value="purnimanta">Purnimanta (North India)</option>
+        </select>
+      </div>
+
+      <hr class="divider">
+      <h2>View Mode</h2>
+      <div class="tab-row">
+        <button class="tab-btn active" id="mode-today" onclick="switchMode('today')">Today</button>
+        <button class="tab-btn" id="mode-date" onclick="switchMode('date')">Date</button>
+        <button class="tab-btn" id="mode-month" onclick="switchMode('month')">Month</button>
+      </div>
+
+      <!-- Date mode picker -->
+      <div id="date-picker" style="display:none">
+        <div class="field-group">
+          <label>Day</label>
+          <input type="number" id="p-day" min="1" max="31" value="1">
+        </div>
+        <div class="field-group">
+          <label>Month</label>
+          <select id="p-month">
+            <option value="1">January</option><option value="2">February</option>
+            <option value="3">March</option><option value="4">April</option>
+            <option value="5">May</option><option value="6">June</option>
+            <option value="7">July</option><option value="8">August</option>
+            <option value="9">September</option><option value="10">October</option>
+            <option value="11">November</option><option value="12">December</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label>Year</label>
+          <input type="number" id="p-year" min="1900" max="2100" value="2026">
+        </div>
+      </div>
+
+      <!-- Month mode picker -->
+      <div id="month-picker" style="display:none">
+        <div class="field-group">
+          <label>Month</label>
+          <select id="m-month">
+            <option value="1">January</option><option value="2">February</option>
+            <option value="3">March</option><option value="4">April</option>
+            <option value="5">May</option><option value="6">June</option>
+            <option value="7">July</option><option value="8">August</option>
+            <option value="9">September</option><option value="10">October</option>
+            <option value="11">November</option><option value="12">December</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label>Year</label>
+          <input type="number" id="m-year" min="1900" max="2100" value="2026">
+        </div>
+      </div>
+
+      <button class="btn-primary" id="fetch-btn" onclick="fetchData()">Get Panchanga</button>
+
+      <hr class="divider">
+      <div style="font-size:11px;color:var(--muted);line-height:1.6">
+        Calculations use NASA JPL DE421 ephemeris with Lahiri Ayanamsa. Times shown in local timezone.
+      </div>
+    </div>
+
+    <!-- Main content -->
+    <div class="main" id="main-content">
+      <div class="empty-state">
+        <div class="icon">🕉</div>
+        <div style="font-size:1.1rem;font-weight:700;margin-bottom:8px">Welcome to Panchanga</div>
+        <div style="font-size:.9rem">Select your location and click <strong>Get Panchanga</strong><br>to view today's Vedic calendar details.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── Utilities ──────────────────────────────────────────────
+    const MONTHS = ['January','February','March','April','May','June',
+                    'July','August','September','October','November','December'];
+
+    function esc(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+    function badge(text, cls) {
+      return `<span class="badge ${cls}">${esc(text)}</span>`;
+    }
+    function chogColor(name) {
+      return {Amrit:'#1a7f4b',Shubh:'#2e7d32',Labh:'#388e3c',
+              Char:'#f57c00',Udveg:'#c62828',Kaal:'#b71c1c',Rog:'#d32f2f'}[name] || '#555';
+    }
+    function chogClass(name) {
+      return 'slot-' + (name||'').toLowerCase();
+    }
+
+    // ── Clock ─────────────────────────────────────────────────
+    function updateClock() {
+      const now = new Date();
+      document.getElementById('current-time').textContent =
+        now.toLocaleString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    }
+    updateClock(); setInterval(updateClock, 1000);
+
+    // ── Init ──────────────────────────────────────────────────
+    let currentMode = 'today';
+    const now = new Date();
+    document.getElementById('p-day').value = now.getDate();
+    document.getElementById('p-month').value = now.getMonth() + 1;
+    document.getElementById('p-year').value = now.getFullYear();
+    document.getElementById('m-month').value = now.getMonth() + 1;
+    document.getElementById('m-year').value = now.getFullYear();
+
+    function setPreset(lat, lon, name) {
+      document.getElementById('lat').value = lat;
+      document.getElementById('lon').value = lon;
+    }
+
+    function switchMode(mode) {
+      currentMode = mode;
+      ['today','date','month'].forEach(m => {
+        document.getElementById('mode-'+m).classList.toggle('active', m === mode);
+      });
+      document.getElementById('date-picker').style.display  = mode === 'date'  ? 'block' : 'none';
+      document.getElementById('month-picker').style.display = mode === 'month' ? 'block' : 'none';
+    }
+
+    // ── Fetch ─────────────────────────────────────────────────
+    async function fetchData() {
+      if (currentMode === 'today')  return fetchToday();
+      if (currentMode === 'date')   return fetchDate();
+      if (currentMode === 'month')  return fetchMonth();
+    }
+
+    function getCoords() {
+      return {
+        latitude:  parseFloat(document.getElementById('lat').value),
+        longitude: parseFloat(document.getElementById('lon').value),
+        month_system: document.getElementById('month-system').value,
+      };
+    }
+
+    function showLoader() {
+      document.getElementById('main-content').innerHTML =
+        '<div class="loader"><div class="spinner"></div>Loading Panchanga…</div>';
+      document.getElementById('fetch-btn').disabled = true;
+    }
+    function hideLoader() { document.getElementById('fetch-btn').disabled = false; }
+    function showError(msg) {
+      document.getElementById('main-content').innerHTML =
+        `<div class="error-box">⚠️ ${esc(msg)}</div>`;
+      hideLoader();
+    }
+
+    // Today
+    async function fetchToday() {
+      const coords = getCoords();
+      if (!validateCoords(coords)) return;
+      showLoader();
+      try {
+        const r = await fetch('/astrology', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(coords)
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Failed');
+        renderDayView(data, data.upcoming_poojas);
+      } catch(e) { showError(e.message); } finally { hideLoader(); }
+    }
+
+    // Specific date
+    async function fetchDate() {
+      const coords = getCoords();
+      if (!validateCoords(coords)) return;
+      const day   = parseInt(document.getElementById('p-day').value);
+      const month = parseInt(document.getElementById('p-month').value);
+      const year  = parseInt(document.getElementById('p-year').value);
+      showLoader();
+      try {
+        const r = await fetch('/panchanga-date', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({...coords, day, month, year})
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Failed');
+        renderDayView(data.panchanga_data, data.upcoming_poojas);
+      } catch(e) { showError(e.message); } finally { hideLoader(); }
+    }
+
+    // Month
+    async function fetchMonth() {
+      const coords = getCoords();
+      if (!validateCoords(coords)) return;
+      const month = parseInt(document.getElementById('m-month').value);
+      const year  = parseInt(document.getElementById('m-year').value);
+      showLoader();
+      try {
+        const r = await fetch('/monthly-panchanga', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({...coords, month, year})
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Failed');
+        renderMonthView(data);
+      } catch(e) { showError(e.message); } finally { hideLoader(); }
+    }
+
+    function validateCoords({latitude, longitude}) {
+      if (isNaN(latitude) || isNaN(longitude)) { showError('Enter valid coordinates.'); return false; }
+      if (latitude < -90 || latitude > 90)     { showError('Latitude must be −90 to 90.'); return false; }
+      if (longitude < -180 || longitude > 180)  { showError('Longitude must be −180 to 180.'); return false; }
+      return true;
+    }
+
+    // ── Day view renderer ─────────────────────────────────────
+    function renderDayView(d, upcoming) {
+      const main = document.getElementById('main-content');
+      const paksha_icon = (d.paksha||'').includes('Shukla') ? '🌕' : '🌑';
+      const festivals = (d.festival_today||[]).filter(f => f !== 'None');
+      const vratas    = (d.vrata_today||[]).filter(v => v !== 'None');
+      const poojas    = (d.pooja_today||[]).filter(p => p.name !== 'None');
+      const chog      = d.choghadiya || {};
+      const amrit     = d.amrit_kaal || {};
+      const dur       = d.durmuhurta || {};
+      const vj        = d.varjyam || {};
+      const gochar    = d.graha_gochar || {};
+      const subh      = d.subh_muhurat || [];
+      const asubh     = d.asubh_muhurat || [];
+
+      let html = '';
+
+      // ── Day header ───────────────────────────────
+      html += `<div class="day-header">
+        <div>
+          <h2>${esc(d.day_of_week)}, ${esc(d.date)}</h2>
+          <div class="meta">
+            ${paksha_icon} ${esc(d.paksha)} &nbsp;·&nbsp;
+            ${esc(d.amanta_month || '')} &nbsp;·&nbsp; ${esc(d.ritu || '')}
+            ${d.adhik_maas ? ' &nbsp;<strong style="color:#f4a838">Adhik Maas</strong>' : ''}
+          </div>
+          ${festivals.length ? `<div style="margin-top:8px">${festivals.map(f=>badge(f,'badge-red')).join('')}</div>` : ''}
+          ${vratas.length    ? `<div style="margin-top:4px">${vratas.map(v=>badge(v,'badge-blue')).join('')}</div>` : ''}
+        </div>
+        <div class="samvat">
+          <div class="val">VS ${esc(d.vikram_samvat)}</div>
+          <div class="lbl">Vikram Samvat</div>
+          <div class="val" style="margin-top:6px">Shaka ${esc(d.shaka_samvat)}</div>
+          <div class="lbl">Shaka Samvat</div>
+        </div>
+      </div>`;
+
+      // ── Tab switcher ─────────────────────────────
+      html += `<div class="main-tabs">
+        <button class="main-tab active" id="tab-summary" onclick="showTab('summary')">📋 Summary</button>
+        <button class="main-tab" id="tab-panchanga" onclick="showTab('panchanga')">🕉 Panchanga</button>
+        <button class="main-tab" id="tab-muhurats" onclick="showTab('muhurats')">⏰ Muhurats</button>
+        <button class="main-tab" id="tab-planets" onclick="showTab('planets')">🪐 Planets</button>
+        <button class="main-tab" id="tab-poojas" onclick="showTab('poojas')">🪔 Poojas</button>
+      </div>`;
+
+      // ══ TAB: Summary (daily_summary HTML) ════════
+      html += `<div class="tab-content active" id="tab-content-summary">`;
+      if (d.daily_summary) {
+        html += `<div id="daily-summary-html">${d.daily_summary}</div>`;
+      } else {
+        html += buildSummaryHTML(d, upcoming);
+      }
+      html += `</div>`;
+
+      // ══ TAB: Panchanga ════════════════════════════
+      html += `<div class="tab-content" id="tab-content-panchanga">`;
+
+      // Five angas
+      html += `<div class="section-card">
+        <h3>🕉 The Five Angas</h3>
+        <div class="anga-grid">
+          ${angaCard('Tithi', `${esc(d.tithi)} <small style="font-size:.7em;font-weight:400">#${d.tithi_number}</small>`,
+            `${esc(d.tithi_nature)} nature · ${d.tithi_end ? 'Ends '+esc(d.tithi_end) : 'Continues past midnight'}`)}
+          ${angaCard('Nakshatra', esc(d.nakshatra),
+            `Pada ${d.nakshatra_pada} · ${d.nakshatra_end ? 'Ends '+esc(d.nakshatra_end) : 'Next day'}`)}
+          ${angaCard('Yoga', esc(d.yoga),
+            d.yoga_end ? 'Ends '+esc(d.yoga_end) : 'Continues')}
+          ${angaCard('Karana', esc(d.karana),
+            d.karana_end ? 'Ends '+esc(d.karana_end) : 'Continues')}
+          ${angaCard('Vara', esc(d.day_of_week), esc(d.ritu||''))}
+        </div>`;
+
+      if (d.tithi_nature_significance || d.nakshatra_pada_significance) {
+        html += `<div class="info-grid-2" style="margin-top:12px">`;
+        if (d.tithi_nature_significance)
+          html += `<div class="info-blurb"><strong>Tithi Nature:</strong> ${esc(d.tithi_nature_significance)}</div>`;
+        if (d.nakshatra_pada_significance)
+          html += `<div class="info-blurb"><strong>Nakshatra Pada:</strong> ${esc(d.nakshatra_pada_significance)}</div>`;
+        html += `</div>`;
+      }
+      html += `</div>`;
+
+      // Lunar/Solar details
+      html += `<div class="section-card">
+        <h3>🌙 Signs, Season &amp; Times</h3>
+        <div class="anga-grid">
+          ${angaCard('Moon Sign', esc(d.moon_sign), `Lord: ${esc(d.nakshatra_lord||'')} · Deity: ${esc(d.nakshatra_deity||'')}`)}
+          ${angaCard('Sun Sign',  esc(d.sun_sign),  esc(d.ritu||''))}
+          ${angaCard('Sunrise',   esc(d.sunrise||''), '')}
+          ${angaCard('Sunset',    esc(d.sunset||''),  esc(d.day_duration||''))}
+          ${d.moonrise ? angaCard('Moonrise', esc(d.moonrise), '') : ''}
+          ${d.moonset  ? angaCard('Moonset',  esc(d.moonset),  '') : ''}
+        </div>
+        <div class="row-list" style="margin-top:12px">
+          <div class="row"><span class="rk">Amanta Month</span><span class="rv">${esc(d.amanta_month||'')}</span></div>
+          <div class="row"><span class="rk">Purnimanta Month</span><span class="rv">${esc(d.purnimanta_month||'')}</span></div>
+          <div class="row"><span class="rk">Moon–Sun Angle</span><span class="rv">${(d.sun_moon_angle||0).toFixed(2)}°</span></div>
+          <div class="row"><span class="rk">Sun Sidereal</span><span class="rv">${(d.sun_sidereal||0).toFixed(4)}°</span></div>
+        </div>
+      </div>`;
+
+      // Significance
+      if (d.significance) {
+        html += `<div class="section-card">
+          <h3>✨ Day's Significance</h3>
+          <div class="sig-box">${esc(d.significance)}</div>
+        </div>`;
+      }
+      html += `</div>`;
+
+      // ══ TAB: Muhurats ═════════════════════════════
+      html += `<div class="tab-content" id="tab-content-muhurats">`;
+
+      // Best times
+      html += `<div class="section-card good-section">
+        <h3>✅ Best Times — What To Do</h3><div class="row-list">`;
+      subh.forEach(m => {
+        if (m.abhijit)  html += `<div class="row"><span class="rk">☀️ Abhijit Muhurta</span><span class="rv">${esc(m.abhijit[0])} – ${esc(m.abhijit[1])}</span></div>`;
+        if (m.brahma)   html += `<div class="row"><span class="rk">🌄 Brahma Muhurta</span><span class="rv">${esc(m.brahma[0])} – ${esc(m.brahma[1])}</span></div>`;
+      });
+      const amritWins = amrit.windows || [];
+      if (amritWins.length) {
+        amritWins.forEach(w => {
+          html += `<div class="row"><span class="rk">🌙 Amrit Kaal</span><span class="rv">${esc(w[0])} – ${esc(w[1])}</span></div>`;
+        });
+      } else {
+        html += `<div class="row"><span class="rk">🌙 Amrit Kaal</span><span class="rv" style="color:var(--muted)">None today</span></div>`;
+      }
+      if (amrit.significance)
+        html += `<div style="font-size:12px;color:var(--green-auspicious);margin-top:8px;padding:6px;background:#f1f8e9;border-radius:4px">${esc(amrit.significance)}</div>`;
+      html += `</div></div>`;
+
+      // Times to avoid
+      html += `<div class="section-card bad-section">
+        <h3>⛔ Times to Avoid</h3><div class="row-list">`;
+      asubh.forEach(m => {
+        if (m.rahu)      html += `<div class="row"><span class="rk">🔴 Rahu Kaal</span><span class="rv">${esc(m.rahu[0])} – ${esc(m.rahu[1])}</span></div>`;
+        if (m.gulika)    html += `<div class="row"><span class="rk">🟠 Gulika Kaal</span><span class="rv">${esc(m.gulika[0])} – ${esc(m.gulika[1])}</span></div>`;
+        if (m.yamaganda) html += `<div class="row"><span class="rk">⚫ Yamaganda</span><span class="rv">${esc(m.yamaganda[0])} – ${esc(m.yamaganda[1])}</span></div>`;
+      });
+      const durWins = dur.windows || [];
+      if (durWins.length) {
+        durWins.forEach(w => html += `<div class="row"><span class="rk">🚫 Durmuhurta</span><span class="rv">${esc(w[0])} – ${esc(w[1])}</span></div>`);
+      } else {
+        html += `<div class="row"><span class="rk">🚫 Durmuhurta</span><span class="rv" style="color:var(--green-auspicious)">None today ✓</span></div>`;
+      }
+      if (vj.start) {
+        html += `<div class="row"><span class="rk">⚠️ Varjyam</span><span class="rv">${esc(vj.start)} – ${esc(vj.end)}</span></div>`;
+        if (vj.significance)
+          html += `<div style="font-size:12px;color:#777;margin-top:4px;padding:6px;background:#fff8f8;border-radius:4px">${esc(vj.significance)}</div>`;
+      }
+      if (dur.significance)
+        html += `<div style="font-size:12px;color:var(--red-inauspicious);margin-top:8px;padding:6px;background:#fff3f3;border-radius:4px">${esc(dur.significance)}</div>`;
+      html += `</div></div>`;
+
+      // Choghadiya
+      const chogDay   = chog.day   || [];
+      const chogNight = chog.night || [];
+      if (chogDay.length || chogNight.length) {
+        html += `<div class="section-card">
+          <h3>🕐 Choghadiya</h3>
+          <div class="chog-grid">
+            <div>
+              <div class="chog-title">Day Choghadiya</div>
+              ${chogDay.map(s => chogSlot(s)).join('')}
+            </div>
+            <div>
+              <div class="chog-title">Night Choghadiya</div>
+              ${chogNight.map(s => chogSlot(s)).join('')}
+            </div>
+          </div>
+        </div>`;
+      }
+      html += `</div>`;
+
+      // ══ TAB: Planets ══════════════════════════════
+      html += `<div class="tab-content" id="tab-content-planets">`;
+      html += `<div class="section-card">
+        <h3>🪐 Graha Gochar (Planetary Transits)</h3>
+        <div class="planet-grid">`;
+      Object.entries(gochar).forEach(([name, info]) => {
+        html += `<div class="planet-card">
+          <div class="pname">${esc(name)}</div>
+          <div class="prashi">${esc(info.rashi||'')}</div>
+          <div class="plon">${(info.longitude||0).toFixed(2)}°</div>
+        </div>`;
+      });
+      html += `</div>`;
+      // Planet significance
+      html += `<div class="row-list" style="margin-top:14px">`;
+      Object.entries(gochar).forEach(([name, info]) => {
+        if (info.significance)
+          html += `<div class="row"><span class="rk" style="min-width:80px">${esc(name)}</span><span class="rv" style="font-size:12px;color:var(--muted)">${esc(info.significance)}</span></div>`;
+      });
+      html += `</div></div></div>`;
+
+      // ══ TAB: Poojas ═══════════════════════════════
+      html += `<div class="tab-content" id="tab-content-poojas">`;
+      // Today's poojas
+      html += `<div class="section-card">
+        <h3>🪔 Poojas Today</h3>`;
+      if (poojas.length) {
+        html += `<div class="pooja-list">`;
+        poojas.forEach(p => {
+          html += `<div class="pooja-item">
+            <div class="pooja-icon">🙏</div>
+            <div>
+              <div class="pooja-name">${esc(p.name)}</div>
+              <div class="pooja-reason">${esc(p.reason||'')}</div>
+              ${p.id ? `<div style="font-size:10px;color:#bbb;margin-top:2px">ID: ${esc(p.id)} · Variant: ${esc(p.variant_id)}</div>` : ''}
+            </div>
+          </div>`;
+        });
+        html += `</div>`;
+      } else {
+        html += `<div style="color:var(--muted);font-size:13px;padding:10px 0">No specific poojas recommended today.</div>`;
+      }
+      html += `</div>`;
+
+      // Upcoming poojas
+      if (upcoming && upcoming.length) {
+        html += `<div class="section-card">
+          <h3>📅 Upcoming Poojas (Next 7 Days)</h3>`;
+        upcoming.forEach(u => {
+          html += `<div class="upcoming-item">
+            <div class="udate">📅 ${esc(u.date)} — ${esc(u.day_of_week)}</div>
+            <div class="utithi">${esc(u.tithi)} · ${esc(u.paksha)}</div>
+            <div class="upoojas">`;
+          (u.poojas||[]).filter(p => p.name !== 'None').forEach(p => {
+            html += `<div style="display:flex;gap:8px;align-items:baseline;margin-bottom:4px">
+              <span style="font-size:13px;font-weight:700">🙏 ${esc(p.name)}</span>
+              <span style="font-size:11px;color:var(--muted)">${esc(p.reason||'')}</span>
+            </div>`;
+          });
+          html += `</div></div>`;
+        });
+        html += `</div>`;
+      } else if (upcoming) {
+        html += `<div class="section-card">
+          <h3>📅 Upcoming Poojas (Next 7 Days)</h3>
+          <div style="color:var(--muted);font-size:13px;padding:10px 0">No special poojas in the next 7 days.</div>
+        </div>`;
+      }
+      html += `</div>`;
+      // end all tabs
+      html += ``;
+
+      main.innerHTML = html;
+      hideLoader();
+    }
+
+    function angaCard(label, value, sub) {
+      return `<div class="anga-card">
+        <div class="alabel">${esc(label)}</div>
+        <div class="avalue">${value}</div>
+        ${sub ? `<div class="asub">${esc(sub)}</div>` : ''}
+      </div>`;
+    }
+
+    function chogSlot(s) {
+      const color = chogColor(s.name);
+      return `<div class="chog-slot ${chogClass(s.name)}">
+        <div class="chog-dot" style="background:${color}"></div>
+        <div class="chog-name" style="color:${color}">${esc(s.name)}</div>
+        <div class="chog-time">${esc(s.start)} – ${esc(s.end)}</div>
+        <div class="chog-quality" style="color:${color}">${esc(s.quality||'')}</div>
+      </div>`;
+    }
+
+    function buildSummaryHTML(d, upcoming) {
+      // Fallback if daily_summary not in response — build a basic version
+      const festivals = (d.festival_today||[]).filter(f => f !== 'None');
+      const poojas    = (d.pooja_today||[]).filter(p => p.name !== 'None');
+      let h = '';
+      h += `<div class="section-card"><h3>✨ Significance</h3><div class="sig-box">${esc(d.significance||'')}</div></div>`;
+      if (festivals.length)
+        h += `<div class="section-card"><h3>🎉 Festivals</h3>${festivals.map(f=>badge(f,'badge-red')).join('')}</div>`;
+      if (poojas.length) {
+        h += `<div class="section-card"><h3>🪔 Poojas</h3><div class="pooja-list">`;
+        poojas.forEach(p => h += `<div class="pooja-item"><div class="pooja-icon">🙏</div><div><div class="pooja-name">${esc(p.name)}</div><div class="pooja-reason">${esc(p.reason||'')}</div></div></div>`);
+        h += `</div></div>`;
+      }
+      return h;
+    }
+
+    // ── Tab switcher (within day view) ────────────────────────
+    function showTab(name) {
+      ['summary','panchanga','muhurats','planets','poojas'].forEach(t => {
+        const btn = document.getElementById('tab-'+t);
+        const cnt = document.getElementById('tab-content-'+t);
+        if (btn) btn.classList.toggle('active', t === name);
+        if (cnt) cnt.classList.toggle('active', t === name);
+      });
+    }
+
+    // ── Month view ─────────────────────────────────────────────
+    function renderMonthView(data) {
+      const main = document.getElementById('main-content');
+      const pd   = data.panchanga_data || [];
+      const firstDay = new Date(data.year, data.month - 1, 1).getDay();
+      const monthName = MONTHS[data.month - 1];
+
+      let html = '';
+      html += `<div class="section-card">
+        <h3>📅 ${monthName} ${data.year} — Panchanga Calendar</h3>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+          ${data.timezone} · ${data.total_days} days
+        </div>
+        <div class="month-calendar">`;
+
+      // Day headers
+      ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d =>
+        html += `<div class="cal-header">${d}</div>`);
+
+      // Empty cells before first day
+      for (let i = 0; i < firstDay; i++)
+        html += `<div class="cal-day empty"></div>`;
+
+      pd.forEach(day => {
+        const fests = (day.festival_today||[]).filter(f => f !== 'None');
+        const vratas = (day.vrata_today||[]).filter(v => v !== 'None');
+        const hasFest = fests.length > 0;
+        const dateNum = parseInt(day.date.split('-')[2]);
+        html += `<div class="cal-day ${hasFest ? 'festival-day' : ''}" onclick="loadDayFromMonth(${data.year},${data.month},${dateNum})">
+          <div class="cdate">${dateNum}</div>
+          <div class="ctithi">${esc((day.tithi||'').substring(0,8))}</div>
+          <div class="ctithi" style="color:#555">${esc(day.paksha === 'Shukla Paksha' ? 'S'+day.tithi_number : 'K'+(day.tithi_number-15))}</div>
+          ${fests.length  ? `<div class="cfest">${esc(fests[0].substring(0,18))}</div>` : ''}
+          ${vratas.length ? `<div class="cvrata">${esc(vratas[0].substring(0,18))}</div>` : ''}
+          <div class="sunrise-sunset">↑${esc((day.sunrise||'').replace(':00 ','').toLowerCase())} ↓${esc((day.sunset||'').replace(':00 ','').toLowerCase())}</div>
+        </div>`;
+      });
+      html += `</div></div>`;
+
+      // Festivals list
+      const festDays = pd.filter(d => (d.festival_today||[]).some(f => f !== 'None'));
+      if (festDays.length) {
+        html += `<div class="section-card">
+          <h3>🎉 Festivals &amp; Vratas This Month</h3>
+          <div class="row-list">`;
+        festDays.forEach(day => {
+          const fests  = (day.festival_today||[]).filter(f => f !== 'None');
+          const vratas = (day.vrata_today||[]).filter(v => v !== 'None');
+          html += `<div class="row">
+            <span class="rk">${esc(day.date)} · ${esc(day.day_of_week)}</span>
+            <span class="rv">${fests.map(f=>badge(f,'badge-red')).join('')}${vratas.map(v=>badge(v,'badge-blue')).join('')}</span>
+          </div>`;
+        });
+        html += `</div></div>`;
+      }
+
+      main.innerHTML = html;
+      hideLoader();
+    }
+
+    async function loadDayFromMonth(year, month, day) {
+      // Switch to date mode and load that day
+      switchMode('date');
+      document.getElementById('mode-date').classList.add('active');
+      document.getElementById('mode-today').classList.remove('active');
+      document.getElementById('mode-month').classList.remove('active');
+      document.getElementById('p-year').value  = year;
+      document.getElementById('p-month').value = month;
+      document.getElementById('p-day').value   = day;
+      await fetchDate();
+    }
+
+    // ── Auto-load today on page load ───────────────────────────
+    window.addEventListener('load', () => fetchToday());
+  </script>
+</body>
+</html>
