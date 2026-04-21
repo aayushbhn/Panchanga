@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
 # Application code and ephemeris data
 COPY api.py .
-COPY constants.py .
+# COPY constants.py .
 COPY de421.bsp .
 COPY templates/ templates/
 
