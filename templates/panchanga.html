@@ -631,13 +631,14 @@
         <button class="main-tab" id="tab-poojas" onclick="showTab('poojas')">🪔 Poojas</button>
       </div>`;
 
-      // ══ TAB: Summary (daily_summary HTML) ════════
+      // ══ TAB: Summary (daily summary + app response) ════════
       html += `<div class="tab-content active" id="tab-content-summary">`;
       if (d.daily_summary) {
-        html += `<div id="daily-summary-html">${d.daily_summary}</div>`;
+        html += renderDailySummaryBlock(d.daily_summary);
       } else {
         html += buildSummaryHTML(d, upcoming);
       }
+      html += renderAppResponseSummary(d.app_response || {}, upcoming || []);
       html += `</div>`;
 
       // ══ TAB: Panchanga ════════════════════════════
@@ -853,6 +854,72 @@
         <div class="chog-time">${esc(s.start)} – ${esc(s.end)}</div>
         <div class="chog-quality" style="color:${color}">${esc(s.quality||'')}</div>
       </div>`;
+    }
+
+    function renderDailySummaryBlock(summary) {
+      const s = String(summary || '').trim();
+      if (!s) return '';
+      const lines = s.split('\n').map(x => x.trim()).filter(Boolean);
+      const bulletLines = lines
+        .map(x => x.replace(/^-+\s*/, '').trim())
+        .filter(Boolean);
+      if (!bulletLines.length) {
+        return `<div class="section-card"><h3>📋 Daily Summary</h3><div class="sig-box">${esc(s)}</div></div>`;
+      }
+      return `<div class="section-card"><h3>📋 Daily Summary</h3><div class="row-list">${
+        bulletLines.map(l => `<div class="row"><span class="rk">•</span><span class="rv" style="text-align:left;flex:1;margin-left:8px">${esc(l)}</span></div>`).join('')
+      }</div></div>`;
+    }
+
+    function renderAppResponseSummary(app, upcomingPoojas) {
+      let h = '';
+      const th = app.today_horoscope || null;
+      const tr = app.personalized_planetary_transits || [];
+      const ev = app.upcoming_spiritual_events_week || [];
+      if (th) {
+        h += `<div class="section-card">
+          <h3>♒ Today's Horoscope</h3>
+          <div style="font-weight:700">${esc(th.title || '')}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">${esc(th.subtitle || '')} · Chandrabalam: ${esc(th.chandrabalam || '')}</div>
+          <div class="sig-box" style="margin-top:10px">${esc(th.prediction || th.message || '')}</div>
+        </div>`;
+      }
+      if (tr.length) {
+        h += `<div class="section-card">
+          <h3>🪐 Personalized Transits</h3>
+          <div class="row-list">${
+            tr.map(t => `<div class="row"><span class="rk">${esc(t.planet || '')}</span><span class="rv">House ${esc(String(t.house_from_rashi || ''))} · ${esc(t.transit_rashi || '')}</span></div>`).join('')
+          }</div>
+        </div>`;
+      }
+      if (ev.length) {
+        h += `<div class="section-card">
+          <h3>📅 Upcoming Spiritual Events</h3>
+          ${ev.map(e => `<div class="upcoming-item">
+            <div class="udate">${esc(e.date || '')} · ${esc(e.day || '')}</div>
+            <div style="font-weight:700;margin-top:4px">${esc(e.event || '')}</div>
+            <div class="utithi">${esc(e.tithi || '')} · ${esc(e.paksha || '')}</div>
+          </div>`).join('')}
+        </div>`;
+      }
+      if (upcomingPoojas && upcomingPoojas.length) {
+        h += `<div class="section-card">
+          <h3>🪔 Upcoming Poojas (Next 7 Days)</h3>
+          ${upcomingPoojas.map(u => `<div class="upcoming-item">
+            <div class="udate">${esc(u.date || '')} · ${esc(u.day_of_week || '')}</div>
+            <div class="utithi">${esc(u.tithi || '')} · ${esc(u.paksha || '')}</div>
+            <div class="upoojas">${
+              (u.poojas || []).filter(p => p.name !== 'None').map(p =>
+                `<div style="display:flex;gap:8px;align-items:baseline;margin-top:4px">
+                  <span style="font-size:13px;font-weight:700">🙏 ${esc(p.name || '')}</span>
+                  <span style="font-size:11px;color:var(--muted)">${esc(p.reason || '')}</span>
+                </div>`
+              ).join('')
+            }</div>
+          </div>`).join('')}
+        </div>`;
+      }
+      return h;
     }
 
     function buildSummaryHTML(d, upcoming) {

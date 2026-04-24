@@ -4,6 +4,8 @@ import pytz
 from functools import lru_cache
 from bisect import bisect_right
 import hashlib
+import json
+from urllib import request as urlrequest
 import numpy as np
 
 from skyfield.api import load, Topos
@@ -26,6 +28,8 @@ EPH = load("de421.bsp")
 TF = TimezoneFinder()
 
 AYANAMSA = 24.227570  # Lahiri Ayanamsa (your value)
+KUNDALI_REPORT_URL = "https://recommendation.nepalirudraksha.com/api/astro/report/"
+KUNDALI_TIMEOUT_SECONDS = 12
 
 # ============================================================
 # 2) NAMES / LISTS
@@ -1101,244 +1105,47 @@ def generate_significance(tithi_name, tithi_nature, paksha, nakshatra_name,
     return " ".join(sentences)
 
 def generate_daily_summary(d):
-    """Generate a self-contained HTML summary of the day's panchanga."""
-    def _esc(s):
-        return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-    def _badge(text, color):
-        return f'<span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:{color};color:#fff;margin:2px">{_esc(text)}</span>'
-
-    def _auspicious_quality(name):
-        q = {"Amrit": "#1a7f4b", "Shubh": "#2e7d32", "Labh": "#388e3c",
-             "Char": "#f57c00", "Udveg": "#c62828", "Kaal": "#b71c1c", "Rog": "#d32f2f"}
-        return q.get(name, "#555")
-
+    """Generate concise, render-friendly daily summary text (Markdown bullets)."""
     festivals = [f for f in (d.get("festival_today") or []) if f != "None"]
-    vratas    = [v for v in (d.get("vrata_today") or [])    if v != "None"]
-    poojas    = [p for p in (d.get("pooja_today") or [])    if p.get("name") != "None"]
-    chog_day  = (d.get("choghadiya") or {}).get("day", [])
-    chog_night= (d.get("choghadiya") or {}).get("night", [])
-    durmuhurta= d.get("durmuhurta") or {}
-    varjyam   = d.get("varjyam") or {}
-    amrit     = d.get("amrit_kaal") or {}
-    gochar    = d.get("graha_gochar") or {}
-    subh      = d.get("subh_muhurat") or []
-    asubh     = d.get("asubh_muhurat") or []
+    vratas = [v for v in (d.get("vrata_today") or []) if v != "None"]
+    poojas = [p for p in (d.get("pooja_today") or []) if p.get("name") != "None"]
+    subh = d.get("subh_muhurat") or []
+    asubh = d.get("asubh_muhurat") or []
+    amrit = d.get("amrit_kaal") or {}
+    durmuhurta = d.get("durmuhurta") or {}
+    varjyam = d.get("varjyam") or {}
 
-    h = []
-    h.append('<style>'
-        '.ps{font-family:system-ui,sans-serif;color:#222;line-height:1.5;max-width:900px;margin:0 auto}'
-        '.ps h2{font-size:1.4em;font-weight:700;margin:0 0 4px}'
-        '.ps h3{font-size:1em;font-weight:700;margin:0 0 10px;color:#5c3317;border-bottom:2px solid #f4a838;padding-bottom:4px;display:flex;align-items:center;gap:6px}'
-        '.ps .sec{background:#fff;border:1px solid #e8d5b0;border-radius:10px;padding:16px;margin-bottom:14px}'
-        '.ps .sec.good{border-color:#a5d6a7;background:#f1f8e9}'
-        '.ps .sec.bad{border-color:#ef9a9a;background:#fff3f3}'
-        '.ps .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}'
-        '.ps .card{background:#fffbf2;border:1px solid #f4a838;border-radius:8px;padding:10px}'
-        '.ps .card .label{font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px}'
-        '.ps .card .value{font-size:15px;font-weight:700;color:#2c1810;margin-top:2px}'
-        '.ps .card .sub{font-size:11px;color:#777;margin-top:2px}'
-        '.ps .row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0e8d8}'
-        '.ps .row:last-child{border-bottom:none}'
-        '.ps .row .k{font-weight:600;color:#555;font-size:13px}'
-        '.ps .row .v{font-size:13px;color:#222;text-align:right}'
-        '.ps .chog-slot{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px dotted #eee}'
-        '.ps .chog-slot:last-child{border-bottom:none}'
-        '.ps .pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;color:#fff}'
-        '.ps .sig{font-size:14px;color:#3d2c00;line-height:1.7;background:#fffbf0;border-left:4px solid #f4a838;padding:12px 14px;border-radius:0 8px 8px 0}'
-        '.ps .hdr{background:linear-gradient(135deg,#c0392b 0%,#e67e22 50%,#f39c12 100%);color:#fff;border-radius:10px;padding:16px 20px;margin-bottom:14px}'
-        '.ps .hdr h2{color:#fff}'
-        '.ps .hdr .meta{font-size:12px;opacity:.85;margin-top:4px}'
-        '.ps .planet-row{display:grid;grid-template-columns:90px 1fr;gap:4px;padding:4px 0;border-bottom:1px solid #f0e8d8;font-size:13px}'
-        '.ps .planet-row:last-child{border-bottom:none}'
-        '.ps table.chog{width:100%;border-collapse:collapse;font-size:13px}'
-        '.ps table.chog th{background:#5c3317;color:#fff;padding:6px 10px;text-align:left}'
-        '.ps table.chog td{padding:5px 10px;border-bottom:1px solid #f0e8d8}'
-        '</style>')
-
-    # ── Header ──────────────────────────────────────────────
-    paksha_icon = "🌕" if "Shukla" in str(d.get("paksha", "")) else "🌑"
-    h.append(f'''<div class="ps"><div class="ps hdr">
-      <h2>{_esc(d.get("day_of_week",""))} · {_esc(d.get("date",""))}</h2>
-      <div class="meta">
-        {paksha_icon} {_esc(d.get("paksha",""))} &nbsp;|&nbsp;
-        {_esc(d.get("amanta_month",""))} (Amanta) &nbsp;|&nbsp;
-        Vikram Samvat {_esc(d.get("vikram_samvat",""))} &nbsp;|&nbsp;
-        Shaka {_esc(d.get("shaka_samvat",""))}
-        {" &nbsp;|&nbsp; <strong>Adhik Maas</strong>" if d.get("adhik_maas") else ""}
-      </div>
-    </div>''')
-
-    # ── Five Angas ───────────────────────────────────────────
-    h.append('<div class="ps sec"><h3>🕉 The Five Angas (Panchanga)</h3><div class="ps grid">')
-    def _card(label, value, sub=""):
-        s = f'<div class="ps card"><div class="label">{_esc(label)}</div><div class="value">{_esc(value)}</div>'
-        if sub: s += f'<div class="sub">{_esc(sub)}</div>'
-        s += '</div>'
-        return s
-    tithi_end_str  = f'Ends {d["tithi_end"]}' if d.get("tithi_end") else "Continues past midnight"
-    nak_end_str    = f'Ends {d["nakshatra_end"]}' if d.get("nakshatra_end") else "Continues past midnight"
-    yoga_end_str   = f'Ends {d["yoga_end"]}' if d.get("yoga_end") else "Continues past midnight"
-    karana_end_str = f'Ends {d["karana_end"]}' if d.get("karana_end") else "Continues past midnight"
-
-    h.append(_card("Tithi (Vara)",
-                   f'{d.get("tithi","")} #{d.get("tithi_number","")}',
-                   f'{d.get("tithi_nature","")} nature · {tithi_end_str}'))
-    h.append(_card("Nakshatra",
-                   d.get("nakshatra",""),
-                   f'Pada {d.get("nakshatra_pada","")} · {nak_end_str}'))
-    h.append(_card("Yoga", d.get("yoga",""), yoga_end_str))
-    h.append(_card("Karana", d.get("karana",""), karana_end_str))
-    h.append(_card("Vara (Day)", d.get("day_of_week",""),
-                   f'{d.get("ritu","")} season'))
-    h.append('</div>')
-    # Tithi + Nakshatra nature blurbs
-    tn_sig = d.get("tithi_nature_significance","")
-    np_sig = d.get("nakshatra_pada_significance","")
-    if tn_sig or np_sig:
-        h.append('<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">')
-        if tn_sig:
-            h.append(f'<div style="font-size:12px;color:#5c3317;background:#fffbf0;padding:8px 10px;border-radius:6px;border-left:3px solid #f4a838">{_esc(tn_sig)}</div>')
-        if np_sig:
-            h.append(f'<div style="font-size:12px;color:#5c3317;background:#fffbf0;padding:8px 10px;border-radius:6px;border-left:3px solid #f4a838">{_esc(np_sig)}</div>')
-        h.append('</div>')
-    h.append('</div>')
-
-    # ── Significance ─────────────────────────────────────────
-    if d.get("significance"):
-        h.append(f'<div class="ps sec"><h3>✨ Day\'s Significance</h3>'
-                 f'<div class="ps sig">{_esc(d["significance"])}</div></div>')
-
-    # ── Festivals / Vratas ───────────────────────────────────
-    if festivals or vratas:
-        h.append('<div class="ps sec"><h3>🎉 Festivals &amp; Vratas</h3>')
-        if festivals:
-            h.append('<div style="margin-bottom:6px"><strong>Festivals:</strong> ')
-            h.append(" ".join(_badge(f, "#c0392b") for f in festivals))
-            h.append('</div>')
-        if vratas:
-            h.append('<div><strong>Vratas:</strong> ')
-            h.append(" ".join(_badge(v, "#1565c0") for v in vratas))
-            h.append('</div>')
-        h.append('</div>')
-
-    # ── Best Times ───────────────────────────────────────────
-    h.append('<div class="ps sec good"><h3>✅ Best Times Today — What To Do</h3>')
-    # Brahma Muhurta
-    for m in subh:
-        if "brahma" in m:
-            t = m["brahma"]
-            h.append(f'<div class="ps row"><span class="k">🌄 Brahma Muhurta</span>'
-                     f'<span class="v">{_esc(t[0])} – {_esc(t[1])}</span></div>')
-            break
-    # Abhijit
+    best_times = []
     for m in subh:
         if "abhijit" in m:
-            t = m["abhijit"]
-            h.append(f'<div class="ps row"><span class="k">☀️ Abhijit Muhurta</span>'
-                     f'<span class="v">{_esc(t[0])} – {_esc(t[1])}</span></div>')
-            break
-    # Amrit Kaal
-    windows = amrit.get("windows", [])
-    if windows:
-        for w in windows:
-            h.append(f'<div class="ps row"><span class="k">🌙 Amrit Kaal</span>'
-                     f'<span class="v">{_esc(w[0])} – {_esc(w[1])}</span></div>')
-    else:
-        h.append('<div class="ps row"><span class="k">🌙 Amrit Kaal</span>'
-                 '<span class="v" style="color:#888">None today</span></div>')
-    # Auspicious choghadiya
-    good_slots = [s for s in chog_day + chog_night
-                  if s.get("quality") in ("Auspicious", "Highly Auspicious")]
-    if good_slots:
-        h.append(f'<div class="ps row" style="padding-top:8px"><span class="k">Auspicious Choghadiya</span>'
-                 f'<span class="v">' +
-                 "".join(f'<span style="margin-left:4px;font-size:12px">{_badge(s["name"],"#2e7d32")} {_esc(s["start"])}–{_esc(s["end"])}</span>'
-                         for s in good_slots) +
-                 '</span></div>')
-    if amrit.get("significance"):
-        h.append(f'<div style="font-size:12px;color:#2e7d32;margin-top:8px;padding:6px;background:#f1f8e9;border-radius:4px">{_esc(amrit["significance"])}</div>')
-    h.append('</div>')
+            best_times.append(f"Abhijit Muhurta: {m['abhijit'][0]} - {m['abhijit'][1]}")
+        if "brahma" in m:
+            best_times.append(f"Brahma Muhurta: {m['brahma'][0]} - {m['brahma'][1]}")
+    for w in amrit.get("windows", []):
+        best_times.append(f"Amrit Kaal: {w[0]} - {w[1]}")
 
-    # ── Times to Avoid ────────────────────────────────────────
-    h.append('<div class="ps sec bad"><h3>⛔ Times to Avoid</h3>')
+    avoid_times = []
     for m in asubh:
-        for k, t in m.items():
-            label = {"rahu": "🔴 Rahu Kaal", "gulika": "🟠 Gulika Kaal", "yamaganda": "⚫ Yamaganda"}.get(k, k.title())
-            h.append(f'<div class="ps row"><span class="k">{label}</span>'
-                     f'<span class="v">{_esc(t[0])} – {_esc(t[1])}</span></div>')
-    # Durmuhurta
-    dur_wins = durmuhurta.get("windows", [])
-    if dur_wins:
-        for w in dur_wins:
-            h.append(f'<div class="ps row"><span class="k">🚫 Durmuhurta</span>'
-                     f'<span class="v">{_esc(w[0])} – {_esc(w[1])}</span></div>')
-    else:
-        h.append(f'<div class="ps row"><span class="k">🚫 Durmuhurta</span>'
-                 f'<span class="v" style="color:#2e7d32">None today (auspicious day)</span></div>')
-    # Varjyam
+        if "rahu" in m:
+            avoid_times.append(f"Rahu Kaal: {m['rahu'][0]} - {m['rahu'][1]}")
+        if "gulika" in m:
+            avoid_times.append(f"Gulika Kaal: {m['gulika'][0]} - {m['gulika'][1]}")
+        if "yamaganda" in m:
+            avoid_times.append(f"Yamaganda: {m['yamaganda'][0]} - {m['yamaganda'][1]}")
+    for w in durmuhurta.get("windows", []):
+        avoid_times.append(f"Durmuhurta: {w[0]} - {w[1]}")
     if varjyam.get("start"):
-        h.append(f'<div class="ps row"><span class="k">⚠️ Varjyam</span>'
-                 f'<span class="v">{_esc(varjyam["start"])} – {_esc(varjyam["end"])}</span></div>')
-    if durmuhurta.get("significance"):
-        h.append(f'<div style="font-size:12px;color:#c62828;margin-top:8px;padding:6px;background:#fff3f3;border-radius:4px">{_esc(durmuhurta["significance"])}</div>')
-    h.append('</div>')
+        avoid_times.append(f"Varjyam: {varjyam['start']} - {varjyam['end']}")
 
-    # ── Choghadiya Table ─────────────────────────────────────
-    if chog_day or chog_night:
-        h.append('<div class="ps sec"><h3>🕐 Choghadiya</h3>'
-                 '<table class="ps chog">'
-                 '<thead><tr><th>Period</th><th>Name</th><th>Quality</th><th>Start</th><th>End</th><th>Guidance</th></tr></thead>'
-                 '<tbody>')
-        for i, slot in enumerate(chog_day):
-            color = _auspicious_quality(slot["name"])
-            h.append(f'<tr><td>Day {i+1}</td>'
-                     f'<td>{_badge(slot["name"], color)}</td>'
-                     f'<td style="color:{color};font-weight:600">{_esc(slot.get("quality",""))}</td>'
-                     f'<td>{_esc(slot.get("start",""))}</td>'
-                     f'<td>{_esc(slot.get("end",""))}</td>'
-                     f'<td style="font-size:11px;color:#555">{_esc(slot.get("significance","")[:70])}…</td></tr>')
-        for i, slot in enumerate(chog_night):
-            color = _auspicious_quality(slot["name"])
-            h.append(f'<tr style="background:#f0f0f8"><td>Night {i+1}</td>'
-                     f'<td>{_badge(slot["name"], color)}</td>'
-                     f'<td style="color:{color};font-weight:600">{_esc(slot.get("quality",""))}</td>'
-                     f'<td>{_esc(slot.get("start",""))}</td>'
-                     f'<td>{_esc(slot.get("end",""))}</td>'
-                     f'<td style="font-size:11px;color:#555">{_esc(slot.get("significance","")[:70])}…</td></tr>')
-        h.append('</tbody></table></div>')
-
-    # ── Poojas ───────────────────────────────────────────────
-    if poojas:
-        h.append('<div class="ps sec"><h3>🪔 Poojas Today</h3>')
-        for p in poojas:
-            h.append(f'<div class="ps row"><span class="k">{_esc(p["name"])}</span>'
-                     f'<span class="v" style="font-size:12px;color:#5c3317">{_esc(p.get("reason",""))}</span></div>')
-        h.append('</div>')
-
-    # ── Planetary Transits ───────────────────────────────────
-    if gochar:
-        h.append('<div class="ps sec"><h3>🪐 Planetary Transits (Graha Gochar)</h3>')
-        for planet, info in gochar.items():
-            h.append(f'<div class="ps planet-row">'
-                     f'<span style="font-weight:700;color:#2c1810">{_esc(planet)}</span>'
-                     f'<span style="color:#555">{_esc(info.get("rashi",""))} '
-                     f'<span style="font-size:11px;color:#888">({round(info.get("longitude",0),1)}°)</span>'
-                     f'</span></div>')
-        h.append('</div>')
-
-    # ── Moon & Sun info ──────────────────────────────────────
-    h.append('<div class="ps sec"><h3>🌙 Solar &amp; Lunar</h3><div class="ps grid">')
-    h.append(_card("Moon Sign", d.get("moon_sign",""), f'Nakshatra: {d.get("nakshatra","")} | Lord: {d.get("nakshatra_lord","")}'))
-    h.append(_card("Sun Sign", d.get("sun_sign",""), f'Ritu: {d.get("ritu","")}'))
-    h.append(_card("Sunrise", d.get("sunrise",""), ""))
-    h.append(_card("Sunset", d.get("sunset",""), f'Day: {d.get("day_duration","")}'))
-    if d.get("moonrise"): h.append(_card("Moonrise", d.get("moonrise",""), ""))
-    if d.get("moonset"):  h.append(_card("Moonset",  d.get("moonset",""), ""))
-    h.append('</div></div>')
-
-    h.append('</div>')  # close .ps
-    return "".join(h)
+    lines = [
+        f"Day Overview: {d.get('day_of_week','')} ({d.get('date','')}) - {d.get('tithi','')} ({d.get('paksha','')}).",
+        f"Overall Energy: {d.get('significance','') or 'Balanced day; proceed with clarity and discipline.'}",
+        f"Best Times: {', '.join(best_times[:4]) if best_times else 'No major auspicious window identified.'}",
+        f"Times to Avoid: {', '.join(avoid_times[:5]) if avoid_times else 'No major inauspicious window identified.'}",
+        f"Festivals/Vratas: {', '.join((festivals + vratas)[:4]) if (festivals or vratas) else 'None specific today.'}",
+        f"Suggested Pooja: {poojas[0]['name']} - {poojas[0].get('reason','')}" if poojas else "Suggested Pooja: No specific pooja recommended today.",
+    ]
+    return "\n".join([f"- {line}" for line in lines])
 
 
 # ============================================================
@@ -1707,6 +1514,26 @@ def get_upcoming_poojas(lat_r, lon_r, tz_name, from_date, days_ahead=7, month_sy
     return result
 
 
+def _filter_upcoming_poojas_window(upcoming_poojas, base_date_str, min_day=3, max_day=7):
+    if not upcoming_poojas or not base_date_str:
+        return []
+    try:
+        base_date = datetime.strptime(base_date_str, "%Y-%m-%d").date()
+    except Exception:
+        return []
+
+    window = []
+    for item in upcoming_poojas:
+        try:
+            d = datetime.strptime((item or {}).get("date", ""), "%Y-%m-%d").date()
+        except Exception:
+            continue
+        delta = (d - base_date).days
+        if min_day <= delta <= max_day:
+            window.append(item)
+    return window
+
+
 def _clean_event_list(values):
     return [v for v in (values or []) if v and v != "None"]
 
@@ -1802,8 +1629,12 @@ def get_upcoming_spiritual_events(lat_r, lon_r, tz_name, from_date, days_ahead=7
         vratas = vratas or ["None"]
         poojas = get_poojas_for_day(tithi_number, paksha, amanta_month, day_of_week, fixed + lunar)
 
-        event_titles = _clean_event_list(festivals) + _clean_event_list(vratas)
-        event_title = event_titles[0] if event_titles else f"{tithi_name} ({paksha})"
+        clean_festivals = _clean_event_list(festivals)
+        clean_vratas = [v for v in _clean_event_list(vratas) if ("ekadashi" in v.lower() or "pradosh" in v.lower())]
+        event_titles = clean_festivals + clean_vratas
+        if not event_titles:
+            continue
+        event_title = event_titles[0]
         guidance = _event_guidance(event_title, paksha)
 
         result.append({
@@ -1903,6 +1734,12 @@ PLANET_TRANSIT_EFFECT = {
 PLANET_PRIORITY = {
     "Saturn": 0, "Jupiter": 1, "Rahu": 2, "Ketu": 3,
     "Sun": 4, "Moon": 5, "Mars": 6, "Mercury": 7, "Venus": 8
+}
+
+HOUSE_NAME_TO_NUM = {
+    "first_house": 1, "second_house": 2, "third_house": 3, "fourth_house": 4,
+    "fifth_house": 5, "sixth_house": 6, "seventh_house": 7, "eighth_house": 8,
+    "ninth_house": 9, "tenth_house": 10, "eleventh_house": 11, "twelfth_house": 12,
 }
 
 RASHI_TONE = {
@@ -2039,7 +1876,249 @@ def _personalized_transits(rashi, graha_gochar):
     return output
 
 
-def _build_real_horoscope_from_transits(rashi, day_data, personalized_transits, person_name=None):
+def _personalized_transits_from_kundali(kundali_result, graha_gochar):
+    base_rashi = (
+        _extract_rashi_name((kundali_result or {}).get("lagna"))
+        or _extract_rashi_name((kundali_result or {}).get("rashi"))
+    )
+    if not base_rashi:
+        return []
+
+    natal_house_map = _build_natal_house_map(kundali_result)
+    output = []
+    base_idx = rashi_names.index(base_rashi)
+    for planet, info in (graha_gochar or {}).items():
+        trans_rashi = (info or {}).get("rashi")
+        if trans_rashi not in rashi_names:
+            continue
+        house = ((rashi_names.index(trans_rashi) - base_idx) % 12) + 1
+        natal_info = natal_house_map.get(planet, {})
+        natal_house = natal_info.get("natal_house")
+        natal_sign = natal_info.get("natal_sign")
+        movement_text = ""
+        if natal_house:
+            movement_text = f" In your birth chart, {planet} is in house {natal_house} ({natal_sign or 'natal sign unavailable'})."
+
+        output.append({
+            "planet": planet,
+            "transit_rashi": trans_rashi,
+            "house_from_rashi": house,
+            "house_theme": HOUSE_THEMES.get(house, "key life areas"),
+            "planet_effect": PLANET_TRANSIT_EFFECT.get(planet, "shifts the tone of this house"),
+            "natal_house": natal_house,
+            "natal_sign": natal_sign,
+            "message": (
+                f"{planet} transiting {trans_rashi} is in your house {house}.{movement_text} "
+                f"It activates {HOUSE_THEMES.get(house, 'key life areas')}."
+            ).strip(),
+        })
+
+    output.sort(key=lambda x: (x["house_from_rashi"], PLANET_PRIORITY.get(x["planet"], 99)))
+    return output
+
+
+def _ordinal(n):
+    if 10 <= n % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+def _extract_rashi_name(value):
+    if not value:
+        return None
+    plain = str(value).split("(", 1)[0].strip()
+    return _normalize_rashi(plain)
+
+
+def _fetch_kundali_report(birth_details, fallback_tz_name, person_name=None):
+    required = ["date_of_birth", "time_of_birth", "birth_latitude", "birth_longitude"]
+    if not birth_details or any(birth_details.get(k) in (None, "") for k in required):
+        return {"ok": False, "status": "birth_details_not_provided", "result": None}
+
+    time_str = str(birth_details.get("time_of_birth", "")).strip()
+    if len(time_str) == 5:
+        time_str = f"{time_str}:00"
+
+    payload = {
+        "name": person_name or "Panchanga User",
+        "date": str(birth_details.get("date_of_birth")).strip(),
+        "time": time_str,
+        "latitude": str(birth_details.get("birth_latitude")).strip(),
+        "longitude": str(birth_details.get("birth_longitude")).strip(),
+        "timezone": (birth_details.get("birth_timezone") or fallback_tz_name or "Asia/Kathmandu"),
+        "user_currency": str(birth_details.get("user_currency") or "INR"),
+    }
+
+    try:
+        req = urlrequest.Request(
+            KUNDALI_REPORT_URL,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urlrequest.urlopen(req, timeout=KUNDALI_TIMEOUT_SECONDS) as response:
+            raw = response.read().decode("utf-8")
+        parsed = json.loads(raw or "{}")
+        if not parsed.get("ok") or not isinstance(parsed.get("result"), dict):
+            return {"ok": False, "status": "kundali_api_failed", "result": None}
+        return {"ok": True, "status": "ok", "result": parsed.get("result")}
+    except Exception:
+        return {"ok": False, "status": "kundali_api_error", "result": None}
+
+
+def _build_natal_house_map(kundali_result):
+    house_map = {}
+    planets_in_houses = (kundali_result or {}).get("planets_in_houses") or {}
+    for house_key, planets in planets_in_houses.items():
+        if not isinstance(planets, list):
+            continue
+        house_num = HOUSE_NAME_TO_NUM.get(house_key)
+        if not house_num:
+            continue
+        for p in planets:
+            pname = (p or {}).get("name")
+            if pname:
+                house_map[pname] = {
+                    "natal_house": house_num,
+                    "natal_sign": (p or {}).get("sidereal_sign"),
+                }
+    return house_map
+
+
+def _derive_rashi_from_birth_details(birth_details, fallback_tz_name):
+    required = ["date_of_birth", "time_of_birth", "birth_latitude", "birth_longitude"]
+    if not birth_details or any(birth_details.get(k) in (None, "") for k in required):
+        return None
+    try:
+        birth_dt = datetime.strptime(
+            f"{birth_details['date_of_birth']} {birth_details['time_of_birth']}",
+            "%Y-%m-%d %H:%M",
+        )
+        tz_name = birth_details.get("birth_timezone") or fallback_tz_name
+        tz = pytz.timezone(tz_name)
+        local_dt = tz.localize(birth_dt)
+        t_birth = TS.from_datetime(local_dt.astimezone(pytz.utc))
+        _, moon_sid = get_sidereal_lons_geocentric(t_birth)
+        moon_sid = float(np.atleast_1d(moon_sid)[0])
+        return rashi_names[int(moon_sid // 30) % 12]
+    except Exception:
+        return None
+
+
+def _detailed_transit_prediction(planet, transit_rashi, house):
+    intro = f"{planet.upper()} is in {transit_rashi} in your {_ordinal(house)} House."
+    favorable_houses = {1, 2, 3, 5, 6, 9, 10, 11}
+    difficult_houses = {4, 7, 8, 12}
+    benefics = {"Jupiter", "Venus", "Moon", "Mercury"}
+    malefics = {"Saturn", "Rahu", "Ketu", "Mars", "Sun"}
+
+    score = 0
+    if house in favorable_houses:
+        score += 1
+    if house in difficult_houses:
+        score -= 1
+    if planet in benefics:
+        score += 1
+    if planet in malefics:
+        score -= 1
+
+    if score >= 1:
+        tone = "good"
+    elif score <= -1:
+        tone = "bad"
+    else:
+        tone = "mixed"
+
+    opening_by_tone = {
+        "good": [
+            "A very supportive and progressive period is opening for you.",
+            "This looks like a rewarding phase with visible progress and good momentum.",
+        ],
+        "bad": [
+            "This can be a difficult and sensitive period, so stay alert and composed.",
+            "This is a challenging phase and may bring pressure if decisions are rushed.",
+        ],
+        "mixed": [
+            "This is a mixed period where discipline will decide outcomes.",
+            "Results can be moderate in this phase, with both opportunities and caution points.",
+        ],
+    }
+
+    house_good = {
+        1: "Your confidence and initiative can rise, and people may notice your presence.",
+        2: "Money planning, savings discipline, and practical family decisions can improve stability.",
+        3: "Efforts, communication, and short travels can bring encouraging movement.",
+        4: "Inner balance is possible through calm home routines and emotional maturity.",
+        5: "Creative output, studies, and intelligent decisions can support success.",
+        6: "You may overcome competitors and manage pending workload with strength.",
+        7: "Partnership matters can improve through patience, respect, and direct communication.",
+        8: "With maturity, this period can deepen insight and strengthen resilience.",
+        9: "Luck, guidance, and long-distance opportunities can support you well.",
+        10: "Career growth, recognition, and support from seniors may increase.",
+        11: "Gains, networking, and fulfillment of key goals are strongly indicated.",
+        12: "Spiritual growth, closure, and inner healing can become meaningful themes.",
+    }
+    house_bad = {
+        1: "Mood swings and impatience can affect judgment if reactions are not controlled.",
+        2: "Financial leakage, harsh speech, and family tension need careful handling.",
+        3: "Communication gaps, ego clashes, and unproductive travel can create stress.",
+        4: "Domestic unease and emotional restlessness may disturb peace at home.",
+        5: "Speculation, romance misunderstandings, or children-related worry may rise.",
+        6: "Health strain and work pressure may increase if routine is neglected.",
+        7: "Relationship friction, partner stress, or contract disputes may surface.",
+        8: "Sudden obstacles, anxiety, and vulnerability in plans may trouble you.",
+        9: "Luck may feel delayed; travel and mentor-related plans can face hurdles.",
+        10: "Professional pressure, authority conflicts, or reputation risks need caution.",
+        11: "Expected gains may slow, and social misunderstandings can create disappointment.",
+        12: "Expenses, sleep disturbance, and mental overthinking can increase.",
+    }
+
+    planet_good = {
+        "Sun": "Leadership energy is strong; used wisely, it can improve influence and authority.",
+        "Moon": "Emotional intuition can become a strength and improve your public rapport.",
+        "Mars": "You may feel bold and action-oriented, helping you defeat delays and opposition.",
+        "Mercury": "Smart planning and communication can unlock useful opportunities.",
+        "Jupiter": "This supports growth, blessings, guidance, and ethical progress.",
+        "Venus": "Relationship harmony, comfort, and attraction factors can improve.",
+        "Saturn": "Consistent effort can produce lasting and practical results.",
+        "Rahu": "Strategic ambition can open unconventional opportunities when handled ethically.",
+        "Ketu": "Spiritual clarity and sharper inner judgment can improve your decision quality.",
+    }
+    planet_bad = {
+        "Sun": "Ego clashes with seniors or authority figures should be strictly avoided.",
+        "Moon": "Emotional instability may cloud decisions, so avoid impulsive reactions.",
+        "Mars": "Anger, argument, or rash actions can damage progress if not controlled.",
+        "Mercury": "Miscommunication and financial misjudgment can create avoidable issues.",
+        "Jupiter": "Overconfidence or excessive optimism can lead to impractical choices.",
+        "Venus": "Attachment, indulgence, or relationship imbalance may invite trouble.",
+        "Saturn": "Delays and pressure can test patience; persistence is required.",
+        "Rahu": "Confusion, over-risk, and reputation-sensitive behavior need close monitoring.",
+        "Ketu": "Detachment from practical duties can hurt outcomes if basics are ignored.",
+    }
+
+    caution_line = {
+        "good": "Stay grounded and disciplined so this positive phase gives full results.",
+        "bad": "Avoid risky decisions, control temper, and protect health and reputation.",
+        "mixed": "Take measured actions, avoid extremes, and focus on consistency over speed.",
+    }
+
+    opening = _stable_pick(opening_by_tone[tone], f"{planet}:{house}:tone")
+    if tone == "good":
+        body = f"{house_good.get(house, '')} {planet_good.get(planet, '')}"
+    elif tone == "bad":
+        body = f"{house_bad.get(house, '')} {planet_bad.get(planet, '')}"
+    else:
+        body = (
+            f"{house_good.get(house, '')} At the same time, {house_bad.get(house, '').lower()} "
+            f"{planet_good.get(planet, '')}"
+        )
+
+    return f"{intro} {opening} {body} {caution_line[tone]}".replace("  ", " ").strip()
+
+
+def _build_real_horoscope_from_transits(rashi, day_data, personalized_transits, person_name=None, kundali_result=None):
     if not rashi:
         return None
     base = _build_horoscope_for_rashi(rashi, day_data)
@@ -2048,7 +2127,7 @@ def _build_real_horoscope_from_transits(rashi, day_data, personalized_transits, 
     if not top:
         base["title"] = f"{base['sanskrit']} Rashifal | {base['rashi']} Prediction"
         base["subtitle"] = f"{base['sanskrit']} Rashi"
-        base["intro"] = "Know what Panditji predicts for the day."
+        base["intro"] = "Know what Nepa Rudraksha predicts for the day."
         base["chandrabalam"] = "Neutral"
         base["prediction"] = "Today is moderate. Stay calm, complete essentials, and avoid rushed decisions."
         base["message"] = base["prediction"]
@@ -2070,6 +2149,13 @@ def _build_real_horoscope_from_transits(rashi, day_data, personalized_transits, 
     )
     seed_base = f"{day_data.get('date','')}|{rashi}|{transit_signature}"
     lines = _compose_prediction_lines(rashi, signals, seed_base)
+    if isinstance(kundali_result, dict):
+        current_mahadasha = (kundali_result.get("current_mahadasha") or {}).get("name")
+        current_antardasha = (kundali_result.get("current_antardasha") or {}).get("name")
+        if current_mahadasha and current_antardasha:
+            lines.append(
+                f"You are running {current_mahadasha}-{current_antardasha} dasha, so keep decisions practical and disciplined."
+            )
 
     if positive >= caution + 1:
         chandrabalam = "Thumbs Up"
@@ -2082,7 +2168,7 @@ def _build_real_horoscope_from_transits(rashi, day_data, personalized_transits, 
     prediction = " ".join(lines)
     base["title"] = f"{base['sanskrit']} Rashifal | {base['rashi']} Prediction"
     base["subtitle"] = f"{base['sanskrit']} Rashi"
-    base["intro"] = f"{who}know what Panditji predicts for the day."
+    base["intro"] = f"{who}know what Nepa Rudraksha predicts for the day."
     base["chandrabalam"] = chandrabalam
     base["prediction"] = prediction
     base["message"] = prediction
@@ -2090,7 +2176,7 @@ def _build_real_horoscope_from_transits(rashi, day_data, personalized_transits, 
     return base
 
 
-def build_app_response(day_data, upcoming_spiritual_events, rashi=None, person_name=None):
+def build_app_response(day_data, upcoming_spiritual_events, rashi=None, person_name=None, birth_details=None, fallback_tz_name="Asia/Kathmandu", upcoming_poojas=None):
     """App-only response payload so existing root fields remain unchanged."""
     festivals = _clean_event_list(day_data.get("festival_today"))
     vratas = _clean_event_list(day_data.get("vrata_today"))
@@ -2108,9 +2194,32 @@ def build_app_response(day_data, upcoming_spiritual_events, rashi=None, person_n
         }
     else:
         pooja_brief = {"id": None, "name": "None", "reason": "", "variant_id": None, "event_context": primary_event, "date": day_data.get("date")}
-    normalized_rashi = _normalize_rashi(rashi) or _normalize_rashi(day_data.get("moon_sign"))
-    personalized_transits = _personalized_transits(normalized_rashi, day_data.get("graha_gochar"))
-    real_today_horoscope = _build_real_horoscope_from_transits(normalized_rashi, day_data, personalized_transits, person_name)
+    requested_rashi = _normalize_rashi(rashi)
+    kundali_data = _fetch_kundali_report(birth_details or {}, fallback_tz_name, person_name)
+    kundali_result = kundali_data.get("result") if kundali_data.get("ok") else None
+
+    personalized_transits = _personalized_transits_from_kundali(kundali_result, day_data.get("graha_gochar"))
+    transit_base_rashi = (
+        _extract_rashi_name((kundali_result or {}).get("lagna"))
+        or _extract_rashi_name((kundali_result or {}).get("rashi"))
+    )
+    for t in personalized_transits:
+        t["detailed_prediction"] = _detailed_transit_prediction(
+            t.get("planet"), t.get("transit_rashi"), int(t.get("house_from_rashi", 0) or 0)
+        )
+
+    effective_horoscope_rashi = requested_rashi or transit_base_rashi
+
+    real_today_horoscope = _build_real_horoscope_from_transits(
+        effective_horoscope_rashi,
+        day_data,
+        _personalized_transits(effective_horoscope_rashi, day_data.get("graha_gochar")),
+        person_name,
+        kundali_result,
+    ) if effective_horoscope_rashi else {
+        "status": "no_rashi_provided",
+        "message": "No rashi provided and kundali rashi unavailable. Send `rashi` or full birth details.",
+    }
 
     general_all = []
     for item_rashi in rashi_names:
@@ -2130,12 +2239,30 @@ def build_app_response(day_data, upcoming_spiritual_events, rashi=None, person_n
             "suggested_pooja_for_the_day": pooja_brief,
         },
         "upcoming_spiritual_events_week": upcoming_spiritual_events,
+        "upcoming_poojas": _filter_upcoming_poojas_window(
+            upcoming_poojas or [],
+            day_data.get("date"),
+            min_day=3,
+            max_day=7,
+        ),
         "personalized_planetary_transits": personalized_transits,
         "today_horoscope": real_today_horoscope,
         "general_horoscope_all_rashi": general_all,
         "personalization_meta": {
-            "effective_rashi": normalized_rashi,
-            "rashi_source": "explicit_rashi" if _normalize_rashi(rashi) else "moon_sign_fallback",
+            "effective_rashi_for_horoscope": effective_horoscope_rashi,
+            "horoscope_status": "ok" if effective_horoscope_rashi else "no_rashi_provided",
+            "personalized_transit_base_rashi": transit_base_rashi,
+            "personalized_transit_reference": "lagna_or_rashi",
+            "personalized_transit_status": "ok" if transit_base_rashi else kundali_data.get("status"),
+            "kundali_source": "recommendation.nepalirudraksha.com/api/astro/report",
+            "kundali_api_status": kundali_data.get("status"),
+            "required_birth_details_for_personalized_transits": [
+                "date_of_birth (YYYY-MM-DD)",
+                "time_of_birth (HH:MM or HH:MM:SS, 24h)",
+                "birth_latitude",
+                "birth_longitude",
+                "birth_timezone (optional)"
+            ] if not transit_base_rashi else [],
         },
     }
 
@@ -2403,6 +2530,13 @@ def astrology_api_view():
         month_system = (data.get("month_system") or "both").strip().lower()
         requested_rashi = data.get("rashi")
         person_name = data.get("name")
+        birth_details = {
+            "date_of_birth": data.get("date_of_birth"),
+            "time_of_birth": data.get("time_of_birth"),
+            "birth_latitude": data.get("birth_latitude"),
+            "birth_longitude": data.get("birth_longitude"),
+            "birth_timezone": data.get("birth_timezone"),
+        }
 
         if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
             return jsonify({"error": "Invalid latitude or longitude."}), 400
@@ -2625,7 +2759,7 @@ def astrology_api_view():
             lat_r, lon_r, timezone_str, now_local.date(), days_ahead=7, month_system=month_system
         )
         app_response = build_app_response(
-            response_payload, upcoming_spiritual_events, requested_rashi, person_name
+            response_payload, upcoming_spiritual_events, requested_rashi, person_name, birth_details, timezone_str, upcoming_poojas
         )
         response_payload = order_day_payload(response_payload)
         response_payload["app_response"] = app_response
@@ -2653,6 +2787,13 @@ def monthly_panchanga_api():
         month_system = (data.get("month_system") or "both").strip().lower()
         requested_rashi = data.get("rashi")
         person_name = data.get("name")
+        birth_details = {
+            "date_of_birth": data.get("date_of_birth"),
+            "time_of_birth": data.get("time_of_birth"),
+            "birth_latitude": data.get("birth_latitude"),
+            "birth_longitude": data.get("birth_longitude"),
+            "birth_timezone": data.get("birth_timezone"),
+        }
 
         if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
             return jsonify({"error": "Invalid latitude or longitude."}), 400
@@ -2708,6 +2849,11 @@ def monthly_panchanga_api():
                 ),
                 requested_rashi,
                 person_name,
+                birth_details,
+                timezone_str,
+                get_upcoming_poojas(
+                    lat_r, lon_r, timezone_str, target_date.date(), days_ahead=7, month_system=month_system
+                ),
             )
             monthly_app_response.append({
                 "date": day_data.get("date"),
@@ -2743,6 +2889,13 @@ def panchanga_date_api():
         month_system = (data.get("month_system") or "both").strip().lower()
         requested_rashi = data.get("rashi")
         person_name = data.get("name")
+        birth_details = {
+            "date_of_birth": data.get("date_of_birth"),
+            "time_of_birth": data.get("time_of_birth"),
+            "birth_latitude": data.get("birth_latitude"),
+            "birth_longitude": data.get("birth_longitude"),
+            "birth_timezone": data.get("birth_timezone"),
+        }
 
         if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
             return jsonify({"error": "Invalid latitude or longitude."}), 400
@@ -2780,7 +2933,7 @@ def panchanga_date_api():
             month_system=month_system
         )
         app_response = build_app_response(
-            panchanga_data, upcoming_spiritual_events, requested_rashi, person_name
+            panchanga_data, upcoming_spiritual_events, requested_rashi, person_name, birth_details, timezone_str, upcoming_poojas
         )
         panchanga_data = order_day_payload(panchanga_data)
 
