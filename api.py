@@ -27,7 +27,12 @@ TS = load.timescale()
 EPH = load("de421.bsp")
 TF = TimezoneFinder()
 
-AYANAMSA = 24.227570  # Lahiri Ayanamsa (your value)
+def _lahiri_ayanamsa(jd: float) -> float:
+    """Lahiri (Chitrapaksha) ayanamsa in degrees for a given Julian Date."""
+    T = (jd - 2451545.0) / 36525.0   # Julian centuries from J2000.0
+    return 23.8531 + T * 1.3966       # 1.3966°/century ≈ 50.28″/year
+
+AYANAMSA = _lahiri_ayanamsa(2451545.0 + 9610.0)  # approximate current-era fallback
 KUNDALI_REPORT_URL = "https://recommendation.nepalirudraksha.com/api/astro/report/"
 KUNDALI_TIMEOUT_SECONDS = 12
 
@@ -639,11 +644,13 @@ def _as_np(x):
 def _to_int_scalar(x):
     return int(np.atleast_1d(x)[0])
 
-def tropical_to_sidereal_arr(tropical_deg):
-    return (_as_np(tropical_deg) - AYANAMSA) % 360.0
+def tropical_to_sidereal_arr(tropical_deg, jd=None):
+    ayanamsa = _lahiri_ayanamsa(jd) if jd is not None else AYANAMSA
+    return (_as_np(tropical_deg) - ayanamsa) % 360.0
 
-def tropical_to_sidereal(tropical_deg_scalar):
-    return float((tropical_deg_scalar - AYANAMSA) % 360.0)
+def tropical_to_sidereal(tropical_deg_scalar, jd=None):
+    ayanamsa = _lahiri_ayanamsa(jd) if jd is not None else AYANAMSA
+    return float((tropical_deg_scalar - ayanamsa) % 360.0)
 
 # --- Anga widths
 TITHI_DEG = 12.0
@@ -655,12 +662,13 @@ def get_sidereal_lons_geocentric(t):
     earth = geocentric_observer()
     sun = EPH["sun"]
     moon = EPH["moon"]
+    jd = float(np.atleast_1d(t.tt)[0])
 
     sun_lon_trop = earth.at(t).observe(sun).apparent().frame_latlon(ecliptic_frame)[1].degrees
     moon_lon_trop = earth.at(t).observe(moon).apparent().frame_latlon(ecliptic_frame)[1].degrees
 
-    sun_sid = tropical_to_sidereal_arr(sun_lon_trop)
-    moon_sid = tropical_to_sidereal_arr(moon_lon_trop)
+    sun_sid = tropical_to_sidereal_arr(sun_lon_trop, jd)
+    moon_sid = tropical_to_sidereal_arr(moon_lon_trop, jd)
     return sun_sid, moon_sid
 
 def sun_moon_angle_at(t):
@@ -875,10 +883,11 @@ def get_all_planet_positions(t):
         ("Sun","sun"),("Moon","moon"),("Mars","mars"),("Mercury","mercury"),
         ("Jupiter","jupiter barycenter"),("Venus","venus"),("Saturn","saturn barycenter"),
     ]
+    jd = float(np.atleast_1d(t.tt)[0])
     result = {}
     for name, body in planet_map:
         lon_trop = earth.at(t).observe(EPH[body]).apparent().frame_latlon(ecliptic_frame)[1].degrees
-        lon_sid  = tropical_to_sidereal(float(np.atleast_1d(lon_trop)[0]))
+        lon_sid  = tropical_to_sidereal(float(np.atleast_1d(lon_trop)[0]), jd)
         rashi    = rashi_names[int(lon_sid // 30) % 12]
         result[name] = {
             "longitude":   round(lon_sid, 4),
@@ -887,9 +896,9 @@ def get_all_planet_positions(t):
                              f"influencing {PLANET_GOVERNS[name]}."),
         }
 
-    d = float(np.atleast_1d(t.tt)[0]) - 2451545.0
+    d = jd - 2451545.0
     rahu_trop = (125.044522 - 0.052953922 * d) % 360.0
-    rahu_sid  = tropical_to_sidereal(rahu_trop)
+    rahu_sid  = tropical_to_sidereal(rahu_trop, jd)
     ketu_sid  = (rahu_sid + 180.0) % 360.0
     for name, lon_sid in (("Rahu", rahu_sid), ("Ketu", ketu_sid)):
         rashi = rashi_names[int(lon_sid // 30) % 12]
@@ -1514,6 +1523,109 @@ def get_upcoming_poojas(lat_r, lon_r, tz_name, from_date, days_ahead=7, month_sy
     return result
 
 
+def _precompute_month_events_and_poojas(lat_r, lon_r, tz_name, year, month, month_system="both"):
+    """Single-pass computation of spiritual events and poojas for a month + 7 extra days.
+
+    Returns (events_by_date, poojas_by_date) where keys are 'YYYY-MM-DD' strings.
+    Replaces 30 redundant overlapping calls in the monthly loop with one pass.
+    """
+    import calendar
+    num_days = calendar.monthrange(year, month)[1]
+    from_date = datetime(year, month, 1).date()
+    tz = pytz.timezone(tz_name)
+
+    events_by_date = {}
+    poojas_by_date = {}
+
+    for offset in range(num_days + 7):
+        target = from_date + timedelta(days=offset)
+        target_local = tz.localize(datetime(target.year, target.month, target.day, 12, 0))
+        t = TS.from_datetime(target_local.astimezone(pytz.utc))
+
+        sun_sid, moon_sid = get_sidereal_lons_geocentric(t)
+        sun_sid  = float(np.atleast_1d(sun_sid)[0])
+        moon_sid = float(np.atleast_1d(moon_sid)[0])
+        angle = (moon_sid - sun_sid) % 360.0
+        tithi_number, paksha, tithi_name = calculate_tithi_and_paksha_from_angle(angle)
+        amanta_month_val, purnimanta_month_val = calculate_amanta_purnimanta_month_fast(
+            target_local, paksha, tz_name, lat_r, lon_r
+        )
+        day_of_week = target_local.strftime("%A")
+        nak_name = nakshatras[_to_int_scalar(nakshatra_index_at(t))]
+
+        fixed   = check_fixed_festivals(target)
+        lunar   = get_festivals_for_day(tithi_name, paksha, amanta_month_val, purnimanta_month_val,
+                                        month_system=month_system)
+        vratas  = get_vratas_for_day(tithi_name, paksha, day_of_week, nak_name)
+        poojas  = get_poojas_for_day(tithi_number, paksha, amanta_month_val, day_of_week, fixed + lunar)
+
+        date_key = target.strftime("%Y-%m-%d")
+
+        # --- spiritual events entry ---
+        festivals    = (fixed + lunar) or ["None"]
+        vratas_list  = vratas or ["None"]
+        clean_f  = _clean_event_list(festivals)
+        clean_v  = [v for v in _clean_event_list(vratas_list)
+                    if "ekadashi" in v.lower() or "pradosh" in v.lower()]
+        event_titles = clean_f + clean_v
+        if event_titles:
+            event_title = event_titles[0]
+            guidance = _event_guidance(event_title, paksha)
+            events_by_date[date_key] = {
+                "date":                  date_key,
+                "day":                   day_of_week,
+                "tithi":                 tithi_name,
+                "paksha":                paksha,
+                "event":                 event_title,
+                "all_events":            event_titles,
+                "why_it_matters":        guidance["why_it_matters"],
+                "who_should_use_it":     guidance["who_should_use_it"],
+                "recommended_practices": guidance["recommended_practices"],
+                "avoid_practices":       guidance["avoid_practices"],
+                "suggested_pooja":       next(
+                    (p for p in poojas if p.get("name") != "None"),
+                    {"name": "None", "reason": ""},
+                ),
+            }
+
+        # --- poojas entry ---
+        has_poojas = not (len(poojas) == 1 and poojas[0]["name"] == "None")
+        if has_poojas:
+            poojas_by_date[date_key] = {
+                "date":         date_key,
+                "day_of_week":  day_of_week,
+                "tithi":        tithi_name,
+                "tithi_number": tithi_number,
+                "paksha":       paksha,
+                "poojas":       poojas,
+            }
+
+    return events_by_date, poojas_by_date
+
+
+def _slice_upcoming_spiritual_events(events_by_date, from_date, days_ahead=7):
+    """Return upcoming spiritual events from a precomputed dict, matching get_upcoming_spiritual_events output."""
+    result = []
+    for offset in range(1, days_ahead + 1):
+        target = from_date + timedelta(days=offset)
+        entry = events_by_date.get(target.strftime("%Y-%m-%d"))
+        if entry:
+            result.append(entry)
+    result.sort(key=lambda r: (_spiritual_event_priority(r), r.get("date", "")))
+    return result[:7] if len(result) > 7 else result[:max(3, len(result))]
+
+
+def _slice_upcoming_poojas(poojas_by_date, from_date, days_ahead=7):
+    """Return upcoming poojas from a precomputed dict, matching get_upcoming_poojas output."""
+    result = []
+    for offset in range(1, days_ahead + 1):
+        target = from_date + timedelta(days=offset)
+        entry = poojas_by_date.get(target.strftime("%Y-%m-%d"))
+        if entry:
+            result.append(entry)
+    return result
+
+
 def _filter_upcoming_poojas_window(upcoming_poojas, base_date_str, min_day=3, max_day=7):
     if not upcoming_poojas or not base_date_str:
         return []
@@ -1603,6 +1715,19 @@ def _event_guidance(event_name, paksha):
     }
 
 
+def _spiritual_event_priority(row):
+    text = " ".join([row.get("event", "")] + (row.get("all_events") or [])).lower()
+    if "ekadashi" in text:
+        return 0
+    if "pradosh" in text:
+        return 1
+    if row.get("all_events"):
+        return 2
+    if "festival" in text or "jayanti" in text or "purnima" in text:
+        return 3
+    return 4
+
+
 def get_upcoming_spiritual_events(lat_r, lon_r, tz_name, from_date, days_ahead=7, month_system="both"):
     """Return festival/vrata-rich upcoming spiritual events for app use."""
     tz = pytz.timezone(tz_name)
@@ -1650,19 +1775,8 @@ def get_upcoming_spiritual_events(lat_r, lon_r, tz_name, from_date, days_ahead=7
             "avoid_practices": guidance["avoid_practices"],
             "suggested_pooja": next((p for p in poojas if p.get("name") != "None"), {"name": "None", "reason": ""}),
         })
-    def _event_priority(row):
-        text = " ".join([row.get("event", "")] + (row.get("all_events") or [])).lower()
-        if "ekadashi" in text:
-            return 0
-        if "pradosh" in text:
-            return 1
-        if row.get("all_events"):
-            return 2
-        if "festival" in text or "jayanti" in text or "purnima" in text:
-            return 3
-        return 4
 
-    result.sort(key=lambda r: (_event_priority(r), r.get("date", "")))
+    result.sort(key=lambda r: (_spiritual_event_priority(r), r.get("date", "")))
     if len(result) > 7:
         return result[:7]
     # Ensure at least 3 entries in app list, but never beyond 7-day scan window.
@@ -1767,27 +1881,41 @@ def _stable_pick(options, seed_key):
 
 
 def _transit_signal_for_horoscope(personalized_transits):
-    """Extract strongest practical signals from transit map."""
-    signals = {
-        "career": 0,
-        "money": 0,
-        "relationship": 0,
-        "health": 0,
-        "mind": 0,
-    }
+    """Return net signed signals per domain: positive = supportive, negative = challenging."""
+    signals = {"career": 0, "money": 0, "relationship": 0, "health": 0, "mind": 0}
+    benefics = {"Jupiter", "Venus", "Mercury"}
+    malefics = {"Saturn", "Mars", "Rahu", "Ketu"}
+
     for t in personalized_transits:
         p = t["planet"]
         h = t["house_from_rashi"]
-        if h in (10, 11, 6) or p in ("Sun", "Saturn", "Jupiter"):
-            signals["career"] += 1
-        if h in (2, 11, 8) or p in ("Jupiter", "Venus", "Rahu"):
-            signals["money"] += 1
-        if h in (5, 7, 4, 12) or p in ("Venus", "Moon", "Ketu"):
-            signals["relationship"] += 1
-        if h in (1, 6, 8, 12) or p in ("Saturn", "Mars", "Moon"):
+        w = 1 if p in benefics else (-1 if p in malefics else 0)
+
+        if h in (10, 11) or p == "Jupiter":
+            signals["career"] += w if w != 0 else 1
+        if h == 6 or p == "Saturn":
+            signals["career"] -= 1
+
+        if h in (2, 11) or p in ("Jupiter", "Venus"):
+            signals["money"] += w if w != 0 else 1
+        if h in (8, 12) or p in ("Rahu", "Saturn"):
+            signals["money"] -= 1
+
+        if h in (5, 7) or p in ("Venus", "Moon"):
+            signals["relationship"] += w if w != 0 else 1
+        if h in (6, 12) or p in ("Mars", "Saturn", "Ketu"):
+            signals["relationship"] -= 1
+
+        if h in (1, 6, 8) and w < 0:
+            signals["health"] -= 1
+        if h == 1 and w > 0:
             signals["health"] += 1
-        if h in (1, 4, 8, 12) or p in ("Moon", "Rahu", "Ketu"):
-            signals["mind"] += 1
+
+        if h in (1, 4) or p in ("Moon", "Mercury"):
+            signals["mind"] += w if w != 0 else 1
+        if h in (8, 12) or p in ("Rahu", "Ketu", "Saturn"):
+            signals["mind"] -= 1
+
     return signals
 
 
@@ -1800,53 +1928,113 @@ def _compose_prediction_lines(rashi, signals, seed_base):
         f"The day begins with noticeable shifts; lean on your {tone['strength']} to stay centered.",
         f"Planetary movement favors a thoughtful approach, especially through your {tone['strength']}.",
     ]
-    work_lines = [
+
+    work_pos = [
+        "Career momentum is supportive; use clarity and confidence to push forward key tasks.",
+        "Your equation with seniors and decision-makers improves — a direct, respectful approach can open doors.",
+        "Professional opportunities are more accessible today; act on what has been pending too long.",
+    ]
+    work_neg = [
+        "Workplace pressure or authority friction may rise; stay composed and avoid reactive decisions.",
+        "Career progress may feel blocked; focus on preparation rather than pushing prematurely.",
+        "Pending work can pile up if multitasking replaces focused effort — choose one priority at a time.",
+    ]
+    work_neu = [
         "Professional tasks can move forward if you keep communication precise and deadlines realistic.",
-        "Your equation with seniors and decision-makers improves when you stay direct but respectful.",
-        "Pending work can clear faster if you avoid multitasking and focus on one priority block at a time.",
+        "Work output is moderate; consistent effort matters more than bursts of enthusiasm.",
+        "Avoid multitasking; steady, focused progress will outperform scattered attempts today.",
     ]
-    money_lines = [
-        "Handle spending carefully; avoid impulsive purchases and review commitments before saying yes.",
-        "Financially, gradual gains are more likely than sudden jumps, so stay disciplined.",
+
+    money_pos = [
+        "Financial matters are looking up; a pending gain, payment, or practical opportunity may arrive.",
+        "Income channels are active; review pending dues and follow up on money owed to you.",
+        "Spending discipline today can translate into a noticeably stronger position over the coming week.",
+    ]
+    money_neg = [
+        "Unplanned expenses or financial strain may surface; avoid impulsive commitments and large purchases.",
+        "Money matters need careful handling; review contracts before signing and verify figures before acting.",
+        "Financial leakage is possible through careless spending or poorly timed investments — pause and verify.",
+    ]
+    money_neu = [
+        "Handle finances with consistency; gradual gains are more likely than sudden jumps.",
         "Money matters improve through practical planning rather than risky shortcuts.",
+        "Keep spending within a clear plan; no dramatic moves, just steady, reliable management.",
     ]
-    relation_lines = [
+
+    relation_pos = [
+        "Close relationships carry warmth today; meaningful conversations and connection are well-supported.",
+        "Romantic and family bonds can deepen through honest, affectionate communication.",
+        "Partnership matters tend to improve when you lead with patience and genuine appreciation.",
+    ]
+    relation_neg = [
+        "Relationship dynamics may feel tense; avoid ego-based arguments and give space where needed.",
+        "Misunderstandings in close bonds are possible — listen fully before reacting.",
+        "Marital or partner stress may rise; prioritize calm over being right.",
+    ]
+    relation_neu = [
         "In close relationships, speak gently; small misunderstandings can be resolved with patience.",
         "Romantic and family conversations need emotional maturity more than quick reactions.",
         "Marital dynamics may feel sensitive; listen first and avoid ego-based arguments.",
     ]
-    health_lines = [
-        "Stress may translate into physical lethargy, so protect sleep, hydration, and meal timing.",
-        "Mind-body balance needs attention; avoid overexertion and keep a steady routine.",
-        "Energy fluctuates through the day, so pace yourself and avoid unnecessary confrontation.",
+
+    health_pos = [
+        "Physical energy is relatively stable; a disciplined routine and rest will reinforce this.",
+        "Vitality supports you well today; maintain your pace without overdoing any single exertion.",
+        "Health trends are calm; consistent meals, sleep, and gentle activity keep this positive.",
     ]
-    close_lines = [
-        "Job seekers can receive a meaningful lead, callback, or useful connection.",
+    health_neg = [
+        "Stress may translate into physical fatigue; protect sleep, hydration, and meal timing carefully.",
+        "Energy can dip unexpectedly; avoid overexertion and do not ignore early signs of strain.",
+        "Mind-body balance needs attention; a simple, steady routine is better than pushing hard.",
+    ]
+    health_neu = [
+        "Energy fluctuates through the day, so pace yourself and avoid unnecessary confrontation.",
+        "Mind-body balance needs a consistent rhythm; keep routine predictable.",
+        "Rest, hydration, and measured effort are your best tools regardless of what the day brings.",
+    ]
+
+    close_pos = [
+        "Job seekers can receive a meaningful lead, callback, or useful connection today.",
+        "A calm, disciplined approach today sets up stronger momentum over the next few days.",
+        "Harness the positive current carefully — composed action now yields durable rewards.",
+    ]
+    close_neg = [
+        "Stay away from unethical shortcuts; short-term gains today can create long-term complications.",
+        "Avoid risky decisions, protect health and reputation, and prioritize what you can control.",
+        "A patient, grounded stance today protects what matters most across the days ahead.",
+    ]
+    close_neu = [
         "Stay away from unethical actions; short-term gains can create long-term complications.",
         "A calm, disciplined approach today sets up stronger results over the next few days.",
+        "Measured, consistent decisions will serve you better than reactive or impulsive ones.",
     ]
+
+    def _pick_domain(pos_pool, neg_pool, neu_pool, score, key):
+        tone_key = "pos" if score > 0 else ("neg" if score < 0 else "neu")
+        pool = pos_pool if score > 0 else (neg_pool if score < 0 else neu_pool)
+        return _stable_pick(pool, seed_base + f":{key}:{tone_key}")
 
     lines = [
         _stable_pick(openers, seed_base + ":open"),
-        _stable_pick(work_lines, seed_base + f":work:{signals['career']}"),
-        _stable_pick(money_lines, seed_base + f":money:{signals['money']}"),
-        _stable_pick(relation_lines, seed_base + f":rel:{signals['relationship']}"),
-        _stable_pick(health_lines, seed_base + f":health:{signals['health']}"),
-        _stable_pick(close_lines, seed_base + ":close"),
+        _pick_domain(work_pos, work_neg, work_neu, signals["career"], "work"),
+        _pick_domain(money_pos, money_neg, money_neu, signals["money"], "money"),
+        _pick_domain(relation_pos, relation_neg, relation_neu, signals["relationship"], "rel"),
+        _pick_domain(health_pos, health_neg, health_neu, signals["health"], "health"),
+        _pick_domain(close_pos, close_neg, close_neu, sum(signals.values()), "close"),
     ]
-    # Keep exactly 5 lines, weighted by stronger signals.
+
+    # Keep exactly 5 lines, prioritising domains with the strongest absolute signal.
     priority = sorted(
         [
-            ("work", signals["career"], lines[1]),
-            ("money", signals["money"], lines[2]),
-            ("relation", signals["relationship"], lines[3]),
-            ("health", signals["health"], lines[4]),
+            ("work", abs(signals["career"]), lines[1]),
+            ("money", abs(signals["money"]), lines[2]),
+            ("relation", abs(signals["relationship"]), lines[3]),
+            ("health", abs(signals["health"]), lines[4]),
         ],
         key=lambda x: x[1],
         reverse=True,
     )
-    final = [lines[0]] + [p[2] for p in priority[:3]] + [lines[5]]
-    return final
+    return [lines[0]] + [p[2] for p in priority[:3]] + [lines[5]]
 
 
 def _personalized_transits(rashi, graha_gochar):
@@ -2007,6 +2195,34 @@ def _derive_rashi_from_birth_details(birth_details, fallback_tz_name):
         return None
 
 
+PLANET_HOUSE_INSIGHT = {
+    ("Saturn", 1):  "Saturn transiting the 1st house demands long-term self-discipline; health routines and lifestyle restructuring become important.",
+    ("Saturn", 4):  "Saturn here can create domestic responsibilities or property-related delays; steady effort at home brings eventual stability.",
+    ("Saturn", 7):  "Saturn in the 7th brings karmic lessons through partnerships; patience in relationships is tested and rewarded over time.",
+    ("Saturn", 8):  "Deep restructuring of shared resources and hidden matters; longevity improves with honest self-examination.",
+    ("Saturn", 10): "Career advancement requires consistent diligence; authority recognition arrives slowly but durably.",
+    ("Saturn", 12): "A period of karmic closure; old debts and unresolved patterns surface for resolution.",
+    ("Jupiter", 1): "Personal wisdom, vitality, and confidence expand; a generally auspicious period for new beginnings.",
+    ("Jupiter", 4): "Blessings flow into home, family, and emotional foundations; property and domestic happiness improve.",
+    ("Jupiter", 5): "Strongly favors creative output, children, education, and sharp intelligence; one of the best transit positions.",
+    ("Jupiter", 7): "Partnership and marriage prospects improve; existing relationships can grow with shared purpose.",
+    ("Jupiter", 9): "Peak dharmic support — luck, long-distance opportunity, and spiritual guidance align simultaneously.",
+    ("Jupiter", 10): "Career recognition, ethical leadership, and professional expansion are well-supported.",
+    ("Jupiter", 11): "Gains, wish-fulfillment, and fruitful networking reach a positive peak.",
+    ("Mars", 1):   "High physical drive and assertiveness; channel energy productively and avoid unnecessary confrontations.",
+    ("Mars", 8):   "Sudden changes and unexpected disruptions are possible; avoid risky physical activities and speculative investments.",
+    ("Mars", 10):  "Ambition surges and career actions accelerate; guard against impulsiveness with superiors.",
+    ("Rahu", 1):   "Strong transformation of self-image and identity; ambition rises but requires ethical grounding.",
+    ("Rahu", 10):  "Unconventional career opportunities may open; be cautious of shortcuts that compromise reputation.",
+    ("Rahu", 7):   "Complex relationship dynamics may surface; watch for deception in partnerships.",
+    ("Ketu", 5):   "Detachment from past creative or romantic patterns; a good period for spiritual study.",
+    ("Ketu", 12):  "Strong karmic connection to liberation; spiritual growth, foreign links, and closure of past-life patterns.",
+    ("Venus", 7):  "Romance, partnership harmony, and relationship milestones tend to peak during this transit.",
+    ("Venus", 2):  "Financial comfort, family harmony, and aesthetic pleasures are favored.",
+    ("Sun", 10):   "Leadership visibility and public recognition are at their peak; use authority responsibly and honestly.",
+    ("Sun", 1):    "Identity and ego themes dominate; leadership energy is high but must be directed carefully.",
+}
+
 def _detailed_transit_prediction(planet, transit_rashi, house):
     intro = f"{planet.upper()} is in {transit_rashi} in your {_ordinal(house)} House."
     favorable_houses = {1, 2, 3, 5, 6, 9, 10, 11}
@@ -2074,6 +2290,20 @@ def _detailed_transit_prediction(planet, transit_rashi, house):
         11: "Expected gains may slow, and social misunderstandings can create disappointment.",
         12: "Expenses, sleep disturbance, and mental overthinking can increase.",
     }
+    house_mixed = {
+        1: "Personal focus sharpens when inner resistance is acknowledged alongside your strengths.",
+        2: "Financial management and family communication need balance — steady, measured effort pays off.",
+        3: "Communication and short efforts produce moderate movement; filter carefully before acting.",
+        4: "Domestic rhythms may be uneven; emotional steadiness rather than forced change helps most.",
+        5: "Creative and intellectual potential is real but needs realistic expectations to fully open.",
+        6: "Work demands and health routine need balanced attention — neither can be ignored for long.",
+        7: "Partnerships require clear expectations; neither forcing closeness nor withdrawing serves well.",
+        8: "Hidden matters and transitions unfold; composed engagement avoids unnecessary turbulence.",
+        9: "Guidance and opportunity are available but may come with conditions or timing delays.",
+        10: "Professional progress is possible but not automatic; disciplined effort is the deciding factor.",
+        11: "Partial gains are likely; selective networking and quality over quantity improve outcomes.",
+        12: "Reflection is productive; avoid excessive isolation while allowing necessary rest.",
+    }
 
     planet_good = {
         "Sun": "Leadership energy is strong; used wisely, it can improve influence and authority.",
@@ -2110,12 +2340,12 @@ def _detailed_transit_prediction(planet, transit_rashi, house):
     elif tone == "bad":
         body = f"{house_bad.get(house, '')} {planet_bad.get(planet, '')}"
     else:
-        body = (
-            f"{house_good.get(house, '')} At the same time, {house_bad.get(house, '').lower()} "
-            f"{planet_good.get(planet, '')}"
-        )
+        body = f"{house_mixed.get(house, '')} {planet_good.get(planet, '')}"
 
-    return f"{intro} {opening} {body} {caution_line[tone]}".replace("  ", " ").strip()
+    specific = PLANET_HOUSE_INSIGHT.get((planet, house), "")
+    insight_part = f" {specific}" if specific else ""
+
+    return f"{intro} {opening} {body}{insight_part} {caution_line[tone]}".replace("  ", " ").strip()
 
 
 def _build_real_horoscope_from_transits(rashi, day_data, personalized_transits, person_name=None, kundali_result=None):
@@ -2176,7 +2406,7 @@ def _build_real_horoscope_from_transits(rashi, day_data, personalized_transits, 
     return base
 
 
-def build_app_response(day_data, upcoming_spiritual_events, rashi=None, person_name=None, birth_details=None, fallback_tz_name="Asia/Kathmandu", upcoming_poojas=None):
+def build_app_response(day_data, upcoming_spiritual_events, rashi=None, person_name=None, birth_details=None, fallback_tz_name="Asia/Kathmandu", upcoming_poojas=None, precomputed_kundali_data=None, precomputed_general_horoscope=None):
     """App-only response payload so existing root fields remain unchanged."""
     festivals = _clean_event_list(day_data.get("festival_today"))
     vratas = _clean_event_list(day_data.get("vrata_today"))
@@ -2195,7 +2425,10 @@ def build_app_response(day_data, upcoming_spiritual_events, rashi=None, person_n
     else:
         pooja_brief = {"id": None, "name": "None", "reason": "", "variant_id": None, "event_context": primary_event, "date": day_data.get("date")}
     requested_rashi = _normalize_rashi(rashi)
-    kundali_data = _fetch_kundali_report(birth_details or {}, fallback_tz_name, person_name)
+    if precomputed_kundali_data is not None:
+        kundali_data = precomputed_kundali_data
+    else:
+        kundali_data = _fetch_kundali_report(birth_details or {}, fallback_tz_name, person_name)
     kundali_result = kundali_data.get("result") if kundali_data.get("ok") else None
 
     personalized_transits = _personalized_transits_from_kundali(kundali_result, day_data.get("graha_gochar"))
@@ -2221,10 +2454,13 @@ def build_app_response(day_data, upcoming_spiritual_events, rashi=None, person_n
         "message": "No rashi provided and kundali rashi unavailable. Send `rashi` or full birth details.",
     }
 
-    general_all = []
-    for item_rashi in rashi_names:
-        r_transits = _personalized_transits(item_rashi, day_data.get("graha_gochar"))
-        general_all.append(_build_real_horoscope_from_transits(item_rashi, day_data, r_transits))
+    if precomputed_general_horoscope is not None:
+        general_all = precomputed_general_horoscope
+    else:
+        general_all = []
+        for item_rashi in rashi_names:
+            r_transits = _personalized_transits(item_rashi, day_data.get("graha_gochar"))
+            general_all.append(_build_real_horoscope_from_transits(item_rashi, day_data, r_transits))
 
     return {
         "today_spiritual_guidance": {
@@ -2829,6 +3065,14 @@ def monthly_panchanga_api():
         # Batch-compute all anga end times (4 find_discrete calls vs 30×4=120)
         batch_end_times = compute_month_anga_end_times_batch(year, month, timezone_str)
 
+        # Fetch kundali once — birth data is static across all days
+        precomputed_kundali = _fetch_kundali_report(birth_details, timezone_str, person_name)
+
+        # Precompute spiritual events & poojas for the entire month + 7-day tail in one pass
+        events_by_date, poojas_by_date = _precompute_month_events_and_poojas(
+            lat_r, lon_r, timezone_str, year, month, month_system
+        )
+
         monthly_data = []
         monthly_app_response = []
         for day in range(1, num_days + 1):
@@ -2842,18 +3086,25 @@ def monthly_panchanga_api():
                 month_system=month_system,
                 precomputed_end_times=batch_end_times.get(date_key),
             )
+
+            # General horoscope depends only on graha_gochar (changes daily with Moon)
+            # but all 12 rashis share the same planetary positions — compute once per day
+            gochar = day_data.get("graha_gochar")
+            day_general_horoscope = [
+                _build_real_horoscope_from_transits(r, day_data, _personalized_transits(r, gochar))
+                for r in rashi_names
+            ]
+
             day_app_response = build_app_response(
                 day_data,
-                get_upcoming_spiritual_events(
-                    lat_r, lon_r, timezone_str, target_date.date(), days_ahead=7, month_system=month_system
-                ),
+                _slice_upcoming_spiritual_events(events_by_date, target_date.date(), days_ahead=7),
                 requested_rashi,
                 person_name,
                 birth_details,
                 timezone_str,
-                get_upcoming_poojas(
-                    lat_r, lon_r, timezone_str, target_date.date(), days_ahead=7, month_system=month_system
-                ),
+                _slice_upcoming_poojas(poojas_by_date, target_date.date(), days_ahead=7),
+                precomputed_kundali_data=precomputed_kundali,
+                precomputed_general_horoscope=day_general_horoscope,
             )
             monthly_app_response.append({
                 "date": day_data.get("date"),
