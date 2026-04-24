@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import pytz
 from functools import lru_cache
 from bisect import bisect_right
+import hashlib
 import numpy as np
 
 from skyfield.api import load, Topos
@@ -66,6 +67,21 @@ rashi_names = [
     "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
     "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"
 ]
+
+RASHI_PROFILE = {
+    "Aries": {"sanskrit": "Mesha", "lord": "Mangal (Mars)", "element": "Fire sign"},
+    "Taurus": {"sanskrit": "Vrishabha", "lord": "Shukra (Venus)", "element": "Earth sign"},
+    "Gemini": {"sanskrit": "Mithuna", "lord": "Budh (Mercury)", "element": "Air sign"},
+    "Cancer": {"sanskrit": "Karka", "lord": "Chandra (Moon)", "element": "Water sign"},
+    "Leo": {"sanskrit": "Simha", "lord": "Surya (Sun)", "element": "Fire sign"},
+    "Virgo": {"sanskrit": "Kanya", "lord": "Budh (Mercury)", "element": "Earth sign"},
+    "Libra": {"sanskrit": "Tula", "lord": "Shukra (Venus)", "element": "Air sign"},
+    "Scorpio": {"sanskrit": "Vrishchika", "lord": "Mangal (Mars)", "element": "Water sign"},
+    "Sagittarius": {"sanskrit": "Dhanu", "lord": "Guru (Jupiter)", "element": "Fire sign"},
+    "Capricorn": {"sanskrit": "Makara", "lord": "Shani (Saturn)", "element": "Earth sign"},
+    "Aquarius": {"sanskrit": "Kumbha", "lord": "Shani (Saturn)", "element": "Air sign"},
+    "Pisces": {"sanskrit": "Meena", "lord": "Guru (Jupiter)", "element": "Water sign"},
+}
 
 SUN_RASHI_TO_LUNAR_MONTH = {
     "Pisces": "Chaitra",
@@ -1691,6 +1707,492 @@ def get_upcoming_poojas(lat_r, lon_r, tz_name, from_date, days_ahead=7, month_sy
     return result
 
 
+def _clean_event_list(values):
+    return [v for v in (values or []) if v and v != "None"]
+
+
+def _event_guidance(event_name, paksha):
+    e = (event_name or "").lower()
+    if "ekadashi" in e:
+        return {
+            "why_it_matters": "Ekadashi supports discipline, clarity, and deep Vishnu bhakti through mindful fasting.",
+            "who_should_use_it": "People seeking mental detox, devotion, or sattvic routine alignment.",
+            "recommended_practices": [
+                "Observe partial or full fast as per health and family tradition.",
+                "Chant Vishnu mantras, read Gita, and do evening diya offering.",
+                "Keep speech gentle and spend more time in japa or prayer."
+            ],
+            "avoid_practices": [
+                "Heavy tamasic meals, over-stimulation, and avoidable conflict.",
+                "Unnecessary arguments and impulsive commitments."
+            ],
+        }
+    if "pradosh" in e:
+        return {
+            "why_it_matters": "Pradosh is a Shiva-focused twilight vrata known for purification and removal of obstacles.",
+            "who_should_use_it": "Devotees seeking emotional balance, karmic cleansing, and family harmony.",
+            "recommended_practices": [
+                "Perform Shiva puja in the evening with bilva leaves and deepam.",
+                "Chant Om Namah Shivaya or Shiva stotram during Pradosh kala.",
+                "Keep food light and end the day with gratitude and silence."
+            ],
+            "avoid_practices": [
+                "Anger, harsh speech, and rushing through evening worship.",
+                "Starting avoidable confrontational tasks during twilight."
+            ],
+        }
+    if "sankashti" in e or "chaturthi" in e:
+        return {
+            "why_it_matters": "Sankashti Chaturthi is associated with Lord Ganesha for removing blockages and stabilizing intent.",
+            "who_should_use_it": "Those facing delays, stress, or new beginnings needing support.",
+            "recommended_practices": [
+                "Offer durva and modak to Ganesha and read Sankashti vrat katha.",
+                "Take sankalpa for one concrete personal obstacle.",
+                "Prefer moonrise prayer if observed in your tradition."
+            ],
+            "avoid_practices": [
+                "Overcommitting and scattered decision making.",
+                "Breaking fast casually without mindful closure."
+            ],
+        }
+    if paksha == "Shukla Paksha":
+        return {
+            "why_it_matters": "Shukla Paksha supports growth, expansion, and constructive starts.",
+            "who_should_use_it": "People planning new initiatives or devotional commitments.",
+            "recommended_practices": [
+                "Set clear intentions and begin one high-value task.",
+                "Offer morning prayer and maintain disciplined routine.",
+            ],
+            "avoid_practices": ["Overthinking and procrastination."],
+        }
+    return {
+        "why_it_matters": "This lunar phase supports release, introspection, and spiritual reset.",
+        "who_should_use_it": "Anyone needing reflection, emotional grounding, or closure.",
+        "recommended_practices": [
+            "Complete pending tasks and reduce noise in your schedule.",
+            "Do short meditation, mantra, and gratitude reflection."
+        ],
+        "avoid_practices": ["Impulsive high-risk decisions and avoidable friction."],
+    }
+
+
+def get_upcoming_spiritual_events(lat_r, lon_r, tz_name, from_date, days_ahead=7, month_system="both"):
+    """Return festival/vrata-rich upcoming spiritual events for app use."""
+    tz = pytz.timezone(tz_name)
+    result = []
+    for offset in range(1, days_ahead + 1):
+        target = from_date + timedelta(days=offset)
+        target_local = tz.localize(datetime(target.year, target.month, target.day, 12, 0))
+        t = TS.from_datetime(target_local.astimezone(pytz.utc))
+
+        sun_sid, moon_sid = get_sidereal_lons_geocentric(t)
+        sun_sid = float(np.atleast_1d(sun_sid)[0])
+        moon_sid = float(np.atleast_1d(moon_sid)[0])
+        angle = (moon_sid - sun_sid) % 360.0
+        tithi_number, paksha, tithi_name = calculate_tithi_and_paksha_from_angle(angle)
+
+        amanta_month, purnimanta_month = calculate_amanta_purnimanta_month_fast(
+            target_local, paksha, tz_name, lat_r, lon_r
+        )
+        day_of_week = target_local.strftime("%A")
+        fixed = check_fixed_festivals(target)
+        lunar = get_festivals_for_day(tithi_name, paksha, amanta_month, purnimanta_month, month_system=month_system)
+        vratas = get_vratas_for_day(tithi_name, paksha, day_of_week, nakshatras[_to_int_scalar(nakshatra_index_at(t))])
+        festivals = (fixed + lunar) or ["None"]
+        vratas = vratas or ["None"]
+        poojas = get_poojas_for_day(tithi_number, paksha, amanta_month, day_of_week, fixed + lunar)
+
+        event_titles = _clean_event_list(festivals) + _clean_event_list(vratas)
+        event_title = event_titles[0] if event_titles else f"{tithi_name} ({paksha})"
+        guidance = _event_guidance(event_title, paksha)
+
+        result.append({
+            "date": target.strftime("%Y-%m-%d"),
+            "day": day_of_week,
+            "tithi": tithi_name,
+            "paksha": paksha,
+            "event": event_title,
+            "all_events": event_titles,
+            "why_it_matters": guidance["why_it_matters"],
+            "who_should_use_it": guidance["who_should_use_it"],
+            "recommended_practices": guidance["recommended_practices"],
+            "avoid_practices": guidance["avoid_practices"],
+            "suggested_pooja": next((p for p in poojas if p.get("name") != "None"), {"name": "None", "reason": ""}),
+        })
+    def _event_priority(row):
+        text = " ".join([row.get("event", "")] + (row.get("all_events") or [])).lower()
+        if "ekadashi" in text:
+            return 0
+        if "pradosh" in text:
+            return 1
+        if row.get("all_events"):
+            return 2
+        if "festival" in text or "jayanti" in text or "purnima" in text:
+            return 3
+        return 4
+
+    result.sort(key=lambda r: (_event_priority(r), r.get("date", "")))
+    if len(result) > 7:
+        return result[:7]
+    # Ensure at least 3 entries in app list, but never beyond 7-day scan window.
+    return result[:max(3, len(result))]
+
+
+def _normalize_rashi(rashi_value):
+    if not rashi_value:
+        return None
+    raw = str(rashi_value).strip().lower()
+    for name in rashi_names:
+        if raw == name.lower():
+            return name
+    alias = {
+        "aries": "Aries", "aires": "Aries",
+        "mesha": "Aries", "vrishabha": "Taurus", "mithuna": "Gemini", "karka": "Cancer",
+        "simha": "Leo", "kanya": "Virgo", "tula": "Libra", "vrishchika": "Scorpio",
+        "dhanu": "Sagittarius", "makara": "Capricorn", "kumbha": "Aquarius", "aquarious": "Aquarius", "meena": "Pisces",
+    }
+    return alias.get(raw)
+
+
+def _build_horoscope_for_rashi(rashi, day_data):
+    if not rashi:
+        return None
+    profile = RASHI_PROFILE.get(rashi, {"lord": "", "element": "", "sanskrit": rashi})
+    month_day = ""
+    try:
+        month_day = datetime.strptime(day_data.get("date", ""), "%Y-%m-%d").strftime("%b %d")
+    except Exception:
+        month_day = day_data.get("date", "")
+    return {
+        "month_day": month_day,
+        "rashi": rashi,
+        "sanskrit": profile.get("sanskrit", ""),
+        "lord": profile.get("lord", ""),
+        "element": profile.get("element", ""),
+        "message": "",
+    }
+
+
+HOUSE_THEMES = {
+    1: "self, vitality and identity",
+    2: "income, speech and family resources",
+    3: "effort, communication and siblings",
+    4: "home, inner peace and property",
+    5: "creativity, children and intelligence",
+    6: "workload, health routine and competition",
+    7: "partnerships and one-to-one dynamics",
+    8: "transformation, vulnerability and hidden matters",
+    9: "dharma, teachers and long-term blessings",
+    10: "career, responsibility and public role",
+    11: "gains, network and wish-fulfillment",
+    12: "rest, isolation, overseas and closure",
+}
+
+PLANET_TRANSIT_EFFECT = {
+    "Sun": "highlights leadership, visibility and ego themes",
+    "Moon": "changes emotional tone, comfort and responsiveness quickly",
+    "Mars": "adds drive and urgency; watch impulsiveness and conflict",
+    "Mercury": "improves planning, messaging, learning and negotiations",
+    "Jupiter": "supports growth, wisdom and constructive expansion",
+    "Venus": "supports harmony, relationships, art and comfort",
+    "Saturn": "demands discipline, patience and sustainable structure",
+    "Rahu": "amplifies desires, ambition and unconventional moves",
+    "Ketu": "pushes detachment, introspection and spiritual filtering",
+}
+
+PLANET_PRIORITY = {
+    "Saturn": 0, "Jupiter": 1, "Rahu": 2, "Ketu": 3,
+    "Sun": 4, "Moon": 5, "Mars": 6, "Mercury": 7, "Venus": 8
+}
+
+RASHI_TONE = {
+    "Aries": {"open": "Bold momentum surrounds you", "strength": "courage and initiative"},
+    "Taurus": {"open": "A steady rhythm works in your favor", "strength": "patience and grounded judgment"},
+    "Gemini": {"open": "Your mind is quick and alert today", "strength": "communication and adaptability"},
+    "Cancer": {"open": "Emotional sensitivity runs high", "strength": "care, intuition, and protective instincts"},
+    "Leo": {"open": "Your presence is noticeable today", "strength": "leadership and confidence"},
+    "Virgo": {"open": "Details matter more than usual", "strength": "analysis and practical execution"},
+    "Libra": {"open": "Balance becomes your main advantage", "strength": "diplomacy and fair judgment"},
+    "Scorpio": {"open": "Inner intensity is strong", "strength": "focus and strategic depth"},
+    "Sagittarius": {"open": "A wider vision guides your choices", "strength": "optimism and principle-driven action"},
+    "Capricorn": {"open": "Responsibility takes center stage", "strength": "discipline and long-term thinking"},
+    "Aquarius": {"open": "Independent thinking shapes your day", "strength": "innovation and objectivity"},
+    "Pisces": {"open": "Your intuition speaks clearly", "strength": "compassion and spiritual sensitivity"},
+}
+
+
+def _stable_pick(options, seed_key):
+    if not options:
+        return ""
+    digest = hashlib.sha256(seed_key.encode("utf-8")).hexdigest()
+    idx = int(digest[:8], 16) % len(options)
+    return options[idx]
+
+
+def _transit_signal_for_horoscope(personalized_transits):
+    """Extract strongest practical signals from transit map."""
+    signals = {
+        "career": 0,
+        "money": 0,
+        "relationship": 0,
+        "health": 0,
+        "mind": 0,
+    }
+    for t in personalized_transits:
+        p = t["planet"]
+        h = t["house_from_rashi"]
+        if h in (10, 11, 6) or p in ("Sun", "Saturn", "Jupiter"):
+            signals["career"] += 1
+        if h in (2, 11, 8) or p in ("Jupiter", "Venus", "Rahu"):
+            signals["money"] += 1
+        if h in (5, 7, 4, 12) or p in ("Venus", "Moon", "Ketu"):
+            signals["relationship"] += 1
+        if h in (1, 6, 8, 12) or p in ("Saturn", "Mars", "Moon"):
+            signals["health"] += 1
+        if h in (1, 4, 8, 12) or p in ("Moon", "Rahu", "Ketu"):
+            signals["mind"] += 1
+    return signals
+
+
+def _compose_prediction_lines(rashi, signals, seed_base):
+    """Create richer, non-static lines from weighted signals."""
+    tone = RASHI_TONE.get(rashi, {"open": "The day carries mixed energies", "strength": "clarity"})
+
+    openers = [
+        f"{tone['open']}, and your natural {tone['strength']} can give you an edge.",
+        f"The day begins with noticeable shifts; lean on your {tone['strength']} to stay centered.",
+        f"Planetary movement favors a thoughtful approach, especially through your {tone['strength']}.",
+    ]
+    work_lines = [
+        "Professional tasks can move forward if you keep communication precise and deadlines realistic.",
+        "Your equation with seniors and decision-makers improves when you stay direct but respectful.",
+        "Pending work can clear faster if you avoid multitasking and focus on one priority block at a time.",
+    ]
+    money_lines = [
+        "Handle spending carefully; avoid impulsive purchases and review commitments before saying yes.",
+        "Financially, gradual gains are more likely than sudden jumps, so stay disciplined.",
+        "Money matters improve through practical planning rather than risky shortcuts.",
+    ]
+    relation_lines = [
+        "In close relationships, speak gently; small misunderstandings can be resolved with patience.",
+        "Romantic and family conversations need emotional maturity more than quick reactions.",
+        "Marital dynamics may feel sensitive; listen first and avoid ego-based arguments.",
+    ]
+    health_lines = [
+        "Stress may translate into physical lethargy, so protect sleep, hydration, and meal timing.",
+        "Mind-body balance needs attention; avoid overexertion and keep a steady routine.",
+        "Energy fluctuates through the day, so pace yourself and avoid unnecessary confrontation.",
+    ]
+    close_lines = [
+        "Job seekers can receive a meaningful lead, callback, or useful connection.",
+        "Stay away from unethical actions; short-term gains can create long-term complications.",
+        "A calm, disciplined approach today sets up stronger results over the next few days.",
+    ]
+
+    lines = [
+        _stable_pick(openers, seed_base + ":open"),
+        _stable_pick(work_lines, seed_base + f":work:{signals['career']}"),
+        _stable_pick(money_lines, seed_base + f":money:{signals['money']}"),
+        _stable_pick(relation_lines, seed_base + f":rel:{signals['relationship']}"),
+        _stable_pick(health_lines, seed_base + f":health:{signals['health']}"),
+        _stable_pick(close_lines, seed_base + ":close"),
+    ]
+    # Keep exactly 5 lines, weighted by stronger signals.
+    priority = sorted(
+        [
+            ("work", signals["career"], lines[1]),
+            ("money", signals["money"], lines[2]),
+            ("relation", signals["relationship"], lines[3]),
+            ("health", signals["health"], lines[4]),
+        ],
+        key=lambda x: x[1],
+        reverse=True,
+    )
+    final = [lines[0]] + [p[2] for p in priority[:3]] + [lines[5]]
+    return final
+
+
+def _personalized_transits(rashi, graha_gochar):
+    if not rashi or not graha_gochar:
+        return []
+    base_idx = rashi_names.index(rashi)
+    output = []
+    for planet, info in graha_gochar.items():
+        trans_rashi = info.get("rashi")
+        if trans_rashi not in rashi_names:
+            continue
+        house = ((rashi_names.index(trans_rashi) - base_idx) % 12) + 1
+        house_theme = HOUSE_THEMES.get(house, "key life areas")
+        planet_effect = PLANET_TRANSIT_EFFECT.get(planet, "shifts the tone of this house")
+        output.append({
+            "planet": planet,
+            "transit_rashi": trans_rashi,
+            "house_from_rashi": house,
+            "house_theme": house_theme,
+            "planet_effect": planet_effect,
+            "message": (
+                f"{planet} transiting {trans_rashi} is in your house {house}. "
+                f"It activates {house_theme} and {planet_effect}."
+            )
+        })
+    output.sort(key=lambda x: (x["house_from_rashi"], PLANET_PRIORITY.get(x["planet"], 99)))
+    return output
+
+
+def _build_real_horoscope_from_transits(rashi, day_data, personalized_transits, person_name=None):
+    if not rashi:
+        return None
+    base = _build_horoscope_for_rashi(rashi, day_data)
+    core = [t for t in personalized_transits if t["planet"] in ("Saturn", "Jupiter", "Rahu", "Ketu", "Sun", "Moon", "Mars")]
+    top = core[:4] if core else personalized_transits[:4]
+    if not top:
+        base["title"] = f"{base['sanskrit']} Rashifal | {base['rashi']} Prediction"
+        base["subtitle"] = f"{base['sanskrit']} Rashi"
+        base["intro"] = "Know what Panditji predicts for the day."
+        base["chandrabalam"] = "Neutral"
+        base["prediction"] = "Today is moderate. Stay calm, complete essentials, and avoid rushed decisions."
+        base["message"] = base["prediction"]
+        return base
+
+    positive = 0
+    caution = 0
+    for t in top:
+        p = t["planet"]
+        h = t["house_from_rashi"]
+        if p in ("Jupiter", "Venus") or h in (1, 5, 9, 10, 11):
+            positive += 1
+        if p in ("Saturn", "Rahu", "Ketu", "Mars") or h in (6, 8, 12):
+            caution += 1
+
+    signals = _transit_signal_for_horoscope(personalized_transits)
+    transit_signature = "|".join(
+        [f"{t['planet']}:{t['transit_rashi']}:{t['house_from_rashi']}" for t in top]
+    )
+    seed_base = f"{day_data.get('date','')}|{rashi}|{transit_signature}"
+    lines = _compose_prediction_lines(rashi, signals, seed_base)
+
+    if positive >= caution + 1:
+        chandrabalam = "Thumbs Up"
+    elif caution >= positive + 2:
+        chandrabalam = "Thumbs Down"
+    else:
+        chandrabalam = "Mixed"
+
+    who = f"{person_name} — " if person_name else ""
+    prediction = " ".join(lines)
+    base["title"] = f"{base['sanskrit']} Rashifal | {base['rashi']} Prediction"
+    base["subtitle"] = f"{base['sanskrit']} Rashi"
+    base["intro"] = f"{who}know what Panditji predicts for the day."
+    base["chandrabalam"] = chandrabalam
+    base["prediction"] = prediction
+    base["message"] = prediction
+    base["key_points"] = lines
+    return base
+
+
+def build_app_response(day_data, upcoming_spiritual_events, rashi=None, person_name=None):
+    """App-only response payload so existing root fields remain unchanged."""
+    festivals = _clean_event_list(day_data.get("festival_today"))
+    vratas = _clean_event_list(day_data.get("vrata_today"))
+    primary_event = (festivals + vratas + [day_data.get("tithi", "Spiritual Day")])[0]
+    today_guidance = _event_guidance(primary_event, day_data.get("paksha"))
+    pooja = next((p for p in (day_data.get("pooja_today") or []) if p.get("name") != "None"), None)
+    if pooja:
+        pooja_brief = {
+            "id": pooja.get("id"),
+            "name": pooja.get("name"),
+            "reason": pooja.get("reason", ""),
+            "variant_id": pooja.get("variant_id"),
+            "event_context": primary_event,
+            "date": day_data.get("date"),
+        }
+    else:
+        pooja_brief = {"id": None, "name": "None", "reason": "", "variant_id": None, "event_context": primary_event, "date": day_data.get("date")}
+    normalized_rashi = _normalize_rashi(rashi) or _normalize_rashi(day_data.get("moon_sign"))
+    personalized_transits = _personalized_transits(normalized_rashi, day_data.get("graha_gochar"))
+    real_today_horoscope = _build_real_horoscope_from_transits(normalized_rashi, day_data, personalized_transits, person_name)
+
+    general_all = []
+    for item_rashi in rashi_names:
+        r_transits = _personalized_transits(item_rashi, day_data.get("graha_gochar"))
+        general_all.append(_build_real_horoscope_from_transits(item_rashi, day_data, r_transits))
+
+    return {
+        "today_spiritual_guidance": {
+            "title": primary_event,
+            "date": day_data.get("date"),
+            "day": day_data.get("day_of_week"),
+            "muhurat_hint": (day_data.get("subh_muhurat") or [{}])[0],
+            "why_it_matters": today_guidance["why_it_matters"],
+            "who_should_use_it": today_guidance["who_should_use_it"],
+            "recommended_practices": today_guidance["recommended_practices"],
+            "avoid_practices": today_guidance["avoid_practices"],
+            "suggested_pooja_for_the_day": pooja_brief,
+        },
+        "upcoming_spiritual_events_week": upcoming_spiritual_events,
+        "personalized_planetary_transits": personalized_transits,
+        "today_horoscope": real_today_horoscope,
+        "general_horoscope_all_rashi": general_all,
+        "personalization_meta": {
+            "effective_rashi": normalized_rashi,
+            "rashi_source": "explicit_rashi" if _normalize_rashi(rashi) else "moon_sign_fallback",
+        },
+    }
+
+
+def order_day_payload(d):
+    """Return a stable key order for day-level payloads."""
+    return {
+        "date": d.get("date"),
+        "day_of_week": d.get("day_of_week"),
+        "time_zone": d.get("time_zone"),
+        "month_system": d.get("month_system"),
+        "tithi": d.get("tithi"),
+        "tithi_number": d.get("tithi_number"),
+        "tithi_nature": d.get("tithi_nature"),
+        "tithi_nature_significance": d.get("tithi_nature_significance"),
+        "tithi_end": d.get("tithi_end"),
+        "paksha": d.get("paksha"),
+        "nakshatra": d.get("nakshatra"),
+        "nakshatra_pada": d.get("nakshatra_pada"),
+        "nakshatra_lord": d.get("nakshatra_lord"),
+        "nakshatra_deity": d.get("nakshatra_deity"),
+        "nakshatra_pada_significance": d.get("nakshatra_pada_significance"),
+        "nakshatra_end": d.get("nakshatra_end"),
+        "yoga": d.get("yoga"),
+        "yoga_end": d.get("yoga_end"),
+        "karana": d.get("karana"),
+        "karana_end": d.get("karana_end"),
+        "moon_sign": d.get("moon_sign"),
+        "sun_sign": d.get("sun_sign"),
+        "ritu": d.get("ritu"),
+        "amanta_month": d.get("amanta_month"),
+        "purnimanta_month": d.get("purnimanta_month"),
+        "adhik_maas": d.get("adhik_maas"),
+        "vikram_samvat": d.get("vikram_samvat"),
+        "shaka_samvat": d.get("shaka_samvat"),
+        "sunrise": d.get("sunrise"),
+        "sunset": d.get("sunset"),
+        "moonrise": d.get("moonrise"),
+        "moonset": d.get("moonset"),
+        "day_duration": d.get("day_duration"),
+        "subh_muhurat": d.get("subh_muhurat"),
+        "asubh_muhurat": d.get("asubh_muhurat"),
+        "amrit_kaal": d.get("amrit_kaal"),
+        "durmuhurta": d.get("durmuhurta"),
+        "varjyam": d.get("varjyam"),
+        "choghadiya": d.get("choghadiya"),
+        "festival_today": d.get("festival_today"),
+        "vrata_today": d.get("vrata_today"),
+        "pooja_today": d.get("pooja_today"),
+        "graha_gochar": d.get("graha_gochar"),
+        "significance": d.get("significance"),
+        "daily_summary": d.get("daily_summary"),
+        "sun_moon_angle": d.get("sun_moon_angle"),
+        "sun_sidereal": d.get("sun_sidereal"),
+    }
+
+
 # ============================================================
 # 13) DAILY PANCHANGA (for monthly endpoint)
 # ============================================================
@@ -1899,6 +2401,8 @@ def astrology_api_view():
         latitude = float(data.get("latitude"))
         longitude = float(data.get("longitude"))
         month_system = (data.get("month_system") or "both").strip().lower()
+        requested_rashi = data.get("rashi")
+        person_name = data.get("name")
 
         if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
             return jsonify({"error": "Invalid latitude or longitude."}), 400
@@ -2016,7 +2520,7 @@ def astrology_api_view():
             now_local.strftime("%A"), festival_today, vrata_today, is_adhik
         )
 
-        return jsonify({
+        response_payload = {
             # --- Five Angas ---
             "tithi":           tithi_name,
             "tithi_end":       format_dt_local(end_times["tithi_end"]),
@@ -2116,7 +2620,16 @@ def astrology_api_view():
                 "choghadiya": choghadiya, "durmuhurta": durmuhurta,
                 "amrit_kaal": amrit_kaal, "varjyam": varjyam,
             }),
-        })
+        }
+        upcoming_spiritual_events = get_upcoming_spiritual_events(
+            lat_r, lon_r, timezone_str, now_local.date(), days_ahead=7, month_system=month_system
+        )
+        app_response = build_app_response(
+            response_payload, upcoming_spiritual_events, requested_rashi, person_name
+        )
+        response_payload = order_day_payload(response_payload)
+        response_payload["app_response"] = app_response
+        return jsonify(response_payload)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -2138,6 +2651,8 @@ def monthly_panchanga_api():
         month = int(data.get("month", datetime.now().month))
         year = int(data.get("year", datetime.now().year))
         month_system = (data.get("month_system") or "both").strip().lower()
+        requested_rashi = data.get("rashi")
+        person_name = data.get("name")
 
         if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
             return jsonify({"error": "Invalid latitude or longitude."}), 400
@@ -2174,19 +2689,32 @@ def monthly_panchanga_api():
         batch_end_times = compute_month_anga_end_times_batch(year, month, timezone_str)
 
         monthly_data = []
+        monthly_app_response = []
         for day in range(1, num_days + 1):
             target_date = datetime(year, month, day)
             date_key = target_date.strftime("%Y-%m-%d")
-            monthly_data.append(
-                calculate_panchanga_for_date(
-                    latitude,
-                    longitude,
-                    target_date,
-                    timezone_str,
-                    month_system=month_system,
-                    precomputed_end_times=batch_end_times.get(date_key),
-                )
+            day_data = calculate_panchanga_for_date(
+                latitude,
+                longitude,
+                target_date,
+                timezone_str,
+                month_system=month_system,
+                precomputed_end_times=batch_end_times.get(date_key),
             )
+            day_app_response = build_app_response(
+                day_data,
+                get_upcoming_spiritual_events(
+                    lat_r, lon_r, timezone_str, target_date.date(), days_ahead=7, month_system=month_system
+                ),
+                requested_rashi,
+                person_name,
+            )
+            monthly_app_response.append({
+                "date": day_data.get("date"),
+                "day": day_data.get("day_of_week"),
+                "app_response": day_app_response,
+            })
+            monthly_data.append(order_day_payload(day_data))
 
         return jsonify({
             "month": month,
@@ -2195,7 +2723,8 @@ def monthly_panchanga_api():
             "longitude": longitude,
             "timezone": timezone_str,
             "total_days": num_days,
-            "panchanga_data": monthly_data
+            "panchanga_data": monthly_data,
+            "app_response": monthly_app_response,
         })
 
     except Exception as e:
@@ -2212,6 +2741,8 @@ def panchanga_date_api():
         month = int(data.get("month"))
         year = int(data.get("year"))
         month_system = (data.get("month_system") or "both").strip().lower()
+        requested_rashi = data.get("rashi")
+        person_name = data.get("name")
 
         if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
             return jsonify({"error": "Invalid latitude or longitude."}), 400
@@ -2244,6 +2775,14 @@ def panchanga_date_api():
             lat_r, lon_r, timezone_str, target_date.date(), days_ahead=7,
             month_system=month_system
         )
+        upcoming_spiritual_events = get_upcoming_spiritual_events(
+            lat_r, lon_r, timezone_str, target_date.date(), days_ahead=7,
+            month_system=month_system
+        )
+        app_response = build_app_response(
+            panchanga_data, upcoming_spiritual_events, requested_rashi, person_name
+        )
+        panchanga_data = order_day_payload(panchanga_data)
 
         return jsonify({
             "latitude": latitude,
@@ -2251,6 +2790,7 @@ def panchanga_date_api():
             "timezone": timezone_str,
             "panchanga_data": panchanga_data,
             "upcoming_poojas": upcoming_poojas,
+            "app_response": app_response,
         })
 
     except Exception as e:
