@@ -2308,27 +2308,33 @@ TRANSIT_POOJA_PRACTICES = {
 
 
 def _compute_sign_changes(graha_gochar: dict, base_jd: float) -> dict:
-    """For each planet in graha_gochar, estimate days until sign change using JD+1 daily motion.
+    """Estimate days until each planet changes sign.
 
-    Returns {planet_name: {"days": int, "next_sign": str}} or {} per planet if unavailable.
-    Single extra call to get_all_planet_positions at JD+1 for efficiency.
+    Uses 7-day average motion computed from base_jd (noon) to base_jd+7 for accuracy.
+    Saturn is excluded — it retrogrades before its next sign change, making linear
+    extrapolation wildly inaccurate (can be off by 6+ months).
     """
+    _SKIP = {"Saturn"}  # retrogrades before next ingress; linear extrapolation fails
     try:
-        tomorrow_pos = get_all_planet_positions(TS.tt_jd(base_jd + 1.0))
+        pos_today = get_all_planet_positions(TS.tt_jd(base_jd))
+        pos_7 = get_all_planet_positions(TS.tt_jd(base_jd + 7.0))
     except Exception:
         return {}
 
     result = {}
-    for planet, info in graha_gochar.items():
+    for planet in graha_gochar:
+        if planet in _SKIP:
+            continue
         try:
-            cur_lon = float(info.get("longitude", 0))
-            tmr_lon = float(tomorrow_pos[planet]["longitude"])
-            daily_motion = tmr_lon - cur_lon
-            if daily_motion > 180:
-                daily_motion -= 360
-            elif daily_motion < -180:
-                daily_motion += 360
+            cur_lon = float(pos_today[planet]["longitude"])
+            lon_7   = float(pos_7[planet]["longitude"])
+            motion_7 = lon_7 - cur_lon
+            if motion_7 > 180:
+                motion_7 -= 360
+            elif motion_7 < -180:
+                motion_7 += 360
 
+            daily_motion = motion_7 / 7.0
             if abs(daily_motion) < 1e-6:
                 continue
 
@@ -2379,9 +2385,11 @@ def _personalized_transits(rashi, graha_gochar, sign_changes=None):
 
 
 def _personalized_transits_from_kundali(kundali_result, graha_gochar, sign_changes=None):
+    # Vedic Gochar tradition: count transit houses from Janma Rashi (natal Moon sign),
+    # not from Lagna. Fall back to Lagna only if Moon sign is unavailable.
     base_rashi = (
-        _extract_rashi_name((kundali_result or {}).get("lagna"))
-        or _extract_rashi_name((kundali_result or {}).get("rashi"))
+        _extract_rashi_name((kundali_result or {}).get("rashi"))
+        or _extract_rashi_name((kundali_result or {}).get("lagna"))
     )
     if not base_rashi:
         return []
@@ -2763,9 +2771,10 @@ def build_app_response(day_data, upcoming_spiritual_events, rashi=None, person_n
     sign_changes = _compute_sign_changes(graha_gochar, base_jd) if base_jd else {}
 
     personalized_transits = _personalized_transits_from_kundali(kundali_result, graha_gochar, sign_changes)
+    # Mirror the Janma Rashi-first priority used in _personalized_transits_from_kundali
     transit_base_rashi = (
-        _extract_rashi_name((kundali_result or {}).get("lagna"))
-        or _extract_rashi_name((kundali_result or {}).get("rashi"))
+        _extract_rashi_name((kundali_result or {}).get("rashi"))
+        or _extract_rashi_name((kundali_result or {}).get("lagna"))
     )
     effective_horoscope_rashi = requested_rashi or transit_base_rashi
 
@@ -3539,4 +3548,4 @@ def panchanga_date_api():
 # 15) RUN
 # ============================================================
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True,port=5001)
