@@ -789,7 +789,107 @@ def get_vratas_for_day(tithi_name, paksha, day_of_week, nakshatra_name=None):
     return out
 
 def _p(name, pid, vid, reason):
-    return {"name": name, "id": pid, "variant_id": vid, "reason": reason}
+    details = POOJA_DETAILS.get(pid, {})
+    return {
+        "name": name,
+        "id": pid,
+        "variant_id": vid,
+        "reason": reason,
+        "about": details.get("about", ""),
+        "ritual_sequence": details.get("ritual_sequence", []),
+    }
+
+
+POOJA_DETAILS = {
+    "7468622348530": {  # Maha Shivaratri Pooja at Pashupatinath
+        "about": "A sacred all-night vigil puja performed at Pashupatinath Temple on Maha Shivaratri, one of the most auspicious nights of the year. Lord Shiva is worshipped in his Pashupati form with Rudrabhishek, bilva archana, and Shiva stotrams chanted through four praharas (night watches).",
+        "ritual_sequence": [
+            "Sankalpa (declaration of intent) before sunset",
+            "First prahara: Rudrabhishek with water, milk, and honey",
+            "Second prahara: Bilva patra archana and Shiva Sahasranama",
+            "Third prahara: Bel leaf offering and oil deepam lighting",
+            "Fourth prahara: Final abhishek and Maha Aarti at dawn",
+            "Break fast after sunrise darshan",
+        ],
+    },
+    "9035889672434": {  # Masik Shivaratri Pooja at Pashupatinath
+        "about": "Monthly Shivaratri (Masik Shivaratri) puja observed on Krishna Paksha Chaturdashi each month at Pashupatinath. A smaller yet significant Shiva worship for regular devotees seeking blessings for health, peace, and removal of obstacles.",
+        "ritual_sequence": [
+            "Evening bath and clean white or grey clothes",
+            "Light deepam with sesame oil or ghee",
+            "Offer bilva (bel) leaves in sets of three with Om Namah Shivaya",
+            "Perform Rudrabhishek or simple milk abhishek",
+            "Chant Shiva Panchakshara stotram 108 times",
+            "Night vigil or at least stay awake until midnight",
+        ],
+    },
+    "7465529606386": {  # Karya Siddhi Ganesh Pooja
+        "about": "Dedicated to Lord Ganesha, the remover of obstacles, this puja is performed on Chaturthi tithis for success in new endeavors, clearing blockages, and obtaining Ganesha's blessings before starting any important work or journey.",
+        "ritual_sequence": [
+            "Place Ganesha idol or image facing east",
+            "Offer red flowers, durva grass, and modak (sweet dumpling)",
+            "Light 5 lamps with ghee and incense",
+            "Recite Ganesh Atharvashirsha or Ganesh Stotram",
+            "Take sankalpa for your specific intent or obstacle",
+            "Offer coconut and distribute prasad",
+        ],
+    },
+    "8820054950130": {  # Lakshmi Kuber Pooja
+        "about": "A prosperity puja combining worship of Goddess Lakshmi (abundance, wealth) and Lord Kubera (treasury, material success). Performed on auspicious tithis like Purnima, Dhanteras, and Trayodashi to attract financial stability and remove wealth blockages.",
+        "ritual_sequence": [
+            "Clean altar and place Lakshmi and Kubera yantras or idols",
+            "Offer yellow flowers, turmeric, and sandalwood paste",
+            "Light ghee deepam and incense",
+            "Chant Lakshmi Ashtakam and Kubera Dhana Mantra",
+            "Offer coins and sweets as prasad",
+            "Conclude with aarti and seek blessings for abundance",
+        ],
+    },
+    "7465532653810": {  # Rudra Abishek Pooja
+        "about": "Rudrabhishek is a powerful Shiva puja where the Shivalinga is bathed with Panchamrita (milk, curd, ghee, honey, sugar) and sacred substances while Shri Rudram is chanted. It is especially performed on Krishna Pradosh for removing planetary afflictions and bringing peace.",
+        "ritual_sequence": [
+            "Purify the Shivalinga with clean water",
+            "Abhishek with milk while chanting Namakam (Shri Rudram)",
+            "Abhishek with curd while chanting Chamakam",
+            "Abhishek with ghee, honey, and sugar sequentially",
+            "Apply vibhuti (sacred ash) and bilva leaves",
+            "Perform Shiva aarti and pradakshina",
+        ],
+    },
+    "7465524363506": {  # Laxmi Narayan Pooja
+        "about": "A joint worship of Lord Vishnu and Goddess Lakshmi performed on Ekadashi, Purnima, and Trayodashi. It invokes divine grace for prosperity, domestic harmony, and spiritual merit. Especially significant on Ekadashi for Vishnu bhaktas.",
+        "ritual_sequence": [
+            "Fast or eat only sattvic food from the previous day",
+            "Decorate altar with yellow/golden flowers and tulsi",
+            "Offer tulsi leaves, lotus flowers, and panchamrita",
+            "Chant Vishnu Sahasranama or Lakshmi Ashtottaram",
+            "Read Ekadashi Mahatmya if observing Ekadashi",
+            "Perform aarti and distribute prasad after sunset",
+        ],
+    },
+    "8817900945650": {  # Shri Durga Saptshati Chandi Path
+        "about": "Chandi Path (Durga Saptashati) is a 700-verse recitation from Markandeya Purana glorifying Goddess Durga's victories over evil. It is recited during Navaratri and Navami for protection, victory over adversaries, and divine feminine grace.",
+        "ritual_sequence": [
+            "Take morning bath and wear clean red or white clothes",
+            "Light deepam and incense before Durga image",
+            "Recite Kavach, Argala, and Keelakam before the path",
+            "Chant all 13 chapters of Durga Saptashati sequentially",
+            "Offer red flowers and fruits",
+            "Conclude with Aarti and Devi Mahatmya concluding shloka",
+        ],
+    },
+    "8955542700274": {  # Kaal Bhairav and Shakti Maha Puja
+        "about": "A tantric puja to Lord Kaal Bhairav (fierce form of Shiva) and Shakti performed on Krishna Ashtami. It is believed to protect from enemies, negative energies, and fear, and to strengthen the mind against obstacles and delays.",
+        "ritual_sequence": [
+            "Perform puja in the evening or night hours",
+            "Offer black sesame seeds, black flowers, and red hibiscus",
+            "Light mustard oil lamp",
+            "Chant Bhairav Ashtakam or Bhairav Kavach",
+            "Offer alcohol or dark sweets as naivedyam per tradition",
+            "Take protection sankalpa and seek removal of fear and obstacles",
+        ],
+    },
+}
 
 def get_poojas_for_day(tithi_number, paksha, amanta_month, day_of_week, festival_list):
     poojas = []
@@ -1512,12 +1612,26 @@ def get_upcoming_poojas(lat_r, lon_r, tz_name, from_date, days_ahead=7, month_sy
         poojas = get_poojas_for_day(tithi_number, paksha, amanta_month, day_of_week, all_festivals)
         has_poojas = not (len(poojas) == 1 and poojas[0]["name"] == "None")
         if has_poojas:
+            date_key = target.strftime("%Y-%m-%d")
+            try:
+                sr_utc, ss_utc = cached_sunrise_sunset(lat_r, lon_r, date_key, tz_name)
+                sr_l = sr_utc.astimezone(tz)
+                ss_l = ss_utc.astimezone(tz)
+                abh_s, abh_e = calculate_abhijit_muhurat(sr_l, ss_l)
+                brh_s, brh_e = calculate_brahma_muhurat(sr_l, ss_l)
+                day_muhurat = [
+                    {"abhijit": [abh_s.strftime("%I:%M:%S %p"), abh_e.strftime("%I:%M:%S %p")]},
+                    {"brahma":  [brh_s.strftime("%I:%M:%S %p"), brh_e.strftime("%I:%M:%S %p")]},
+                ]
+            except Exception:
+                day_muhurat = []
             result.append({
-                "date":         target.strftime("%Y-%m-%d"),
+                "date":         date_key,
                 "day_of_week":  day_of_week,
                 "tithi":        tithi_name,
                 "tithi_number": tithi_number,
                 "paksha":       paksha,
+                "muhurat":      day_muhurat,
                 "poojas":       poojas,
             })
     return result
@@ -1561,6 +1675,21 @@ def _precompute_month_events_and_poojas(lat_r, lon_r, tz_name, year, month, mont
 
         date_key = target.strftime("%Y-%m-%d")
 
+        # compute lightweight muhurat for this day
+        try:
+            sr_utc, ss_utc = cached_sunrise_sunset(lat_r, lon_r, date_key, tz_name)
+            tz_obj = pytz.timezone(tz_name)
+            sr_local = sr_utc.astimezone(tz_obj)
+            ss_local = ss_utc.astimezone(tz_obj)
+            abh_s, abh_e = calculate_abhijit_muhurat(sr_local, ss_local)
+            brh_s, brh_e = calculate_brahma_muhurat(sr_local, ss_local)
+            day_muhurat = [
+                {"abhijit": [abh_s.strftime("%I:%M:%S %p"), abh_e.strftime("%I:%M:%S %p")]},
+                {"brahma":  [brh_s.strftime("%I:%M:%S %p"), brh_e.strftime("%I:%M:%S %p")]},
+            ]
+        except Exception:
+            day_muhurat = []
+
         # --- spiritual events entry ---
         festivals    = (fixed + lunar) or ["None"]
         vratas_list  = vratas or ["None"]
@@ -1578,10 +1707,12 @@ def _precompute_month_events_and_poojas(lat_r, lon_r, tz_name, year, month, mont
                 "paksha":                paksha,
                 "event":                 event_title,
                 "all_events":            event_titles,
+                "description":           guidance.get("description", ""),
                 "why_it_matters":        guidance["why_it_matters"],
                 "who_should_use_it":     guidance["who_should_use_it"],
                 "recommended_practices": guidance["recommended_practices"],
                 "avoid_practices":       guidance["avoid_practices"],
+                "muhurat":               day_muhurat,
                 "suggested_pooja":       next(
                     (p for p in poojas if p.get("name") != "None"),
                     {"name": "None", "reason": ""},
@@ -1597,6 +1728,7 @@ def _precompute_month_events_and_poojas(lat_r, lon_r, tz_name, year, month, mont
                 "tithi":        tithi_name,
                 "tithi_number": tithi_number,
                 "paksha":       paksha,
+                "muhurat":      day_muhurat,
                 "poojas":       poojas,
             }
 
@@ -1654,6 +1786,7 @@ def _event_guidance(event_name, paksha):
     e = (event_name or "").lower()
     if "ekadashi" in e:
         return {
+            "description": "Ekadashi is the eleventh lunar day (tithi) observed twice a month — once in each paksha. It is one of the most sacred days in Vaishnava tradition, dedicated to Lord Vishnu. Devotees observe a fast from grains and lentils, engaging in prayer, scripture reading, and japa to purify the mind and accumulate spiritual merit.",
             "why_it_matters": "Ekadashi supports discipline, clarity, and deep Vishnu bhakti through mindful fasting.",
             "who_should_use_it": "People seeking mental detox, devotion, or sattvic routine alignment.",
             "recommended_practices": [
@@ -1668,6 +1801,7 @@ def _event_guidance(event_name, paksha):
         }
     if "pradosh" in e:
         return {
+            "description": "Pradosh Vrat is observed on the 13th tithi (Trayodashi) of both Shukla and Krishna Paksha, in the twilight hours (Pradosh Kala — approximately 1.5 hours after sunset). It is a powerful Shiva vrat believed to absolve sins, restore health, and bring peace to the family. The twilight window is considered especially potent for Shiva worship.",
             "why_it_matters": "Pradosh is a Shiva-focused twilight vrata known for purification and removal of obstacles.",
             "who_should_use_it": "Devotees seeking emotional balance, karmic cleansing, and family harmony.",
             "recommended_practices": [
@@ -1682,6 +1816,7 @@ def _event_guidance(event_name, paksha):
         }
     if "sankashti" in e or "chaturthi" in e:
         return {
+            "description": "Sankashti Chaturthi falls on the 4th lunar day of Krishna Paksha each month. 'Sankashti' means 'deliverance from troubles.' It is dedicated to Lord Ganesha — the remover of obstacles. Devotees fast through the day and break it after moonrise, having sighted the moon and offered prayers.",
             "why_it_matters": "Sankashti Chaturthi is associated with Lord Ganesha for removing blockages and stabilizing intent.",
             "who_should_use_it": "Those facing delays, stress, or new beginnings needing support.",
             "recommended_practices": [
@@ -1694,8 +1829,45 @@ def _event_guidance(event_name, paksha):
                 "Breaking fast casually without mindful closure."
             ],
         }
+    if "purnima" in e:
+        return {
+            "description": "Purnima is the full moon tithi, considered the most auspicious lunar phase in the Hindu calendar. It is associated with the culmination of energy, abundance, and heightened spiritual potency. Many major festivals and observances coincide with Purnima.",
+            "why_it_matters": "Full moon amplifies intentions and is an ideal time for gratitude, giving, and Satya Narayan puja.",
+            "who_should_use_it": "Devotees of Vishnu, Shiva, and those seeking emotional fullness or abundance.",
+            "recommended_practices": [
+                "Offer white flowers and milk to the moon at moonrise.",
+                "Perform Satya Narayan puja or Vishnu archana.",
+                "Donate food or clothes as an act of gratitude.",
+            ],
+            "avoid_practices": ["Arguments and major disputes.", "Starting new medical procedures."],
+        }
+    if "amavasya" in e or "ausi" in e:
+        return {
+            "description": "Amavasya (New Moon) is the 30th tithi, considered sacred for ancestor worship (Pitru Tarpan). The no-moon night is believed to be when the veil between the living and ancestors is thinnest. Offerings made on this day benefit departed souls.",
+            "why_it_matters": "Amavasya is the most potent day for ancestor offerings and karmic clearing of ancestral debts.",
+            "who_should_use_it": "Anyone with family karma, grief, or a wish to honor departed ancestors.",
+            "recommended_practices": [
+                "Perform Pitru Tarpan (water offering with sesame) in the morning.",
+                "Donate food to Brahmins or poor in memory of ancestors.",
+                "Light a deepam and offer prayers for departed family members.",
+            ],
+            "avoid_practices": ["Festive celebrations and major new purchases.", "Late-night outings."],
+        }
+    if "navaratri" in e:
+        return {
+            "description": "Navaratri ('Nine Nights') is a nine-day festival celebrating the divine feminine — Goddess Durga in her nine forms (Navadurga). Observed twice a year (Chaitra and Sharad), it involves daily puja, fasting, Devi stotram, and Garba/Dandiya in many communities.",
+            "why_it_matters": "Navaratri channels Shakti energy for purification, courage, and victory over inner and outer obstacles.",
+            "who_should_use_it": "All devotees, especially those seeking strength, protection, or spiritual transformation.",
+            "recommended_practices": [
+                "Worship Navadurga forms daily with flowers, kumkum, and incense.",
+                "Recite Durga Saptashati or Devi Mahatmya.",
+                "Observe partial fast (fruit and milk only) if health permits.",
+            ],
+            "avoid_practices": ["Non-vegetarian food and alcohol.", "Tamasic entertainment during the nine days."],
+        }
     if paksha == "Shukla Paksha":
         return {
+            "description": "Shukla Paksha is the waxing phase of the lunar fortnight — from new moon to full moon. It is considered auspicious for new beginnings, starting projects, rituals of growth, and constructive action. Energy builds during this phase.",
             "why_it_matters": "Shukla Paksha supports growth, expansion, and constructive starts.",
             "who_should_use_it": "People planning new initiatives or devotional commitments.",
             "recommended_practices": [
@@ -1705,6 +1877,7 @@ def _event_guidance(event_name, paksha):
             "avoid_practices": ["Overthinking and procrastination."],
         }
     return {
+        "description": "Krishna Paksha is the waning lunar fortnight — from full moon to new moon. It is a time for inward reflection, releasing what no longer serves, completing unfinished work, and ancestor remembrance. Spiritual discipline in this phase yields deep inner purification.",
         "why_it_matters": "This lunar phase supports release, introspection, and spiritual reset.",
         "who_should_use_it": "Anyone needing reflection, emotional grounding, or closure.",
         "recommended_practices": [
@@ -1762,6 +1935,7 @@ def get_upcoming_spiritual_events(lat_r, lon_r, tz_name, from_date, days_ahead=7
         event_title = event_titles[0]
         guidance = _event_guidance(event_title, paksha)
 
+        day_panchanga = calculate_panchanga_for_date(lat_r, lon_r, datetime(target.year, target.month, target.day), tz_name)
         result.append({
             "date": target.strftime("%Y-%m-%d"),
             "day": day_of_week,
@@ -1769,10 +1943,12 @@ def get_upcoming_spiritual_events(lat_r, lon_r, tz_name, from_date, days_ahead=7
             "paksha": paksha,
             "event": event_title,
             "all_events": event_titles,
+            "description": guidance.get("description", ""),
             "why_it_matters": guidance["why_it_matters"],
             "who_should_use_it": guidance["who_should_use_it"],
             "recommended_practices": guidance["recommended_practices"],
             "avoid_practices": guidance["avoid_practices"],
+            "muhurat": day_panchanga.get("subh_muhurat") or [],
             "suggested_pooja": next((p for p in poojas if p.get("name") != "None"), {"name": "None", "reason": ""}),
         })
 
@@ -2037,10 +2213,144 @@ def _compose_prediction_lines(rashi, signals, seed_base):
     return [lines[0]] + [p[2] for p in priority[:3]] + [lines[5]]
 
 
-def _personalized_transits(rashi, graha_gochar):
+TRANSIT_POOJA_PRACTICES = {
+    "Sun": {
+        "deity": "Surya Deva",
+        "mantra": "Om Hraam Hreem Hraum Sah Suryaya Namah",
+        "practices": [
+            "Offer water to the rising sun (Surya Arghya) daily — cupped in both hands, released facing east.",
+            "Chant Aditya Hridayam or Surya Ashtakam every morning.",
+            "Donate wheat, jaggery, or copper items on Sundays.",
+            "Light a ghee deepam facing east at sunrise for clarity and authority.",
+        ],
+    },
+    "Moon": {
+        "deity": "Chandra Deva (via Lord Shiva)",
+        "mantra": "Om Shraam Shreem Shraum Sah Chandramashe Namah",
+        "practices": [
+            "Offer milk and white flowers to Shiva on Mondays (Somvar Puja).",
+            "Chant Chandra Kavach or Shiva stotrams for emotional balance.",
+            "Donate white rice, milk, or silver on Mondays.",
+            "Observe Somvar Vrat (Monday fast) for mental peace and intuition.",
+        ],
+    },
+    "Mars": {
+        "deity": "Hanuman / Mangal Deva",
+        "mantra": "Om Kraam Kreem Kraum Sah Bhaumaya Namah",
+        "practices": [
+            "Recite Hanuman Chalisa on Tuesdays for courage and protection.",
+            "Donate red lentils (masoor dal), copper, or jaggery on Tuesdays.",
+            "Light a mustard oil lamp before Hanuman's image.",
+            "Channel Mars energy into physical discipline — exercise, yoga, or structured work.",
+        ],
+    },
+    "Mercury": {
+        "deity": "Lord Vishnu / Budha Deva",
+        "mantra": "Om Braam Breem Braum Sah Budhaya Namah",
+        "practices": [
+            "Donate green gram (moong dal) or green vegetables on Wednesdays.",
+            "Recite Vishnu Sahasranama for intelligence and communication clarity.",
+            "Light a camphor lamp and offer green items at the altar.",
+            "Keep speech truthful and avoid agreements made in haste.",
+        ],
+    },
+    "Jupiter": {
+        "deity": "Brihaspati / Lord Vishnu",
+        "mantra": "Om Graam Greem Graum Sah Gurave Namah",
+        "practices": [
+            "Offer yellow flowers and turmeric to Vishnu or Guru on Thursdays.",
+            "Donate yellow cloth, books, or gold on Thursdays (Brihaspati Vrat).",
+            "Recite Guru Stotram or Vishnu Sahasranama.",
+            "Show reverence to teachers, elders, and spiritual guides.",
+        ],
+    },
+    "Venus": {
+        "deity": "Goddess Lakshmi / Shukra Deva",
+        "mantra": "Om Draam Dreem Draum Sah Shukraya Namah",
+        "practices": [
+            "Offer white flowers, milk sweets, and lotus to Lakshmi on Fridays.",
+            "Donate white rice, sugar, dairy, or silk on Fridays.",
+            "Recite Lakshmi Ashtakam or Shri Suktam.",
+            "Keep your home and workspace clean, fragrant, and aesthetically pleasing.",
+        ],
+    },
+    "Saturn": {
+        "deity": "Shani Deva",
+        "mantra": "Om Praam Preem Praum Sah Shanaischaraya Namah",
+        "practices": [
+            "Light a sesame oil (til tel) lamp under a Peepal tree on Saturdays.",
+            "Donate black sesame seeds, iron, mustard oil, or dark blue cloth on Saturdays.",
+            "Recite Shani Stotram, Shani Chalisa, or Shani Kavach.",
+            "Serve the poor, elderly, or disabled — Saturn rewards sincere service.",
+        ],
+    },
+    "Rahu": {
+        "deity": "Goddess Durga / Kaal Bhairav",
+        "mantra": "Om Bhraam Bhreem Bhraum Sah Rahave Namah",
+        "practices": [
+            "Offer blue flowers and durva grass on Saturdays or Rahu Kaal period.",
+            "Recite Durga Kavach or Kalabhairav Ashtakam for protection.",
+            "Donate black sesame, mustard, or dark blue cloth on Saturdays.",
+            "Avoid impulsive decisions; counter Rahu's restlessness through daily meditation.",
+        ],
+    },
+    "Ketu": {
+        "deity": "Lord Ganesha / Skanda",
+        "mantra": "Om Sraam Sreem Sraum Sah Ketave Namah",
+        "practices": [
+            "Worship Lord Ganesha with durva grass and modak on Tuesdays or Chaturthi.",
+            "Recite Ganesha Atharvashirsha for inner clarity and spiritual discernment.",
+            "Donate multi-coloured cloth, sesame, or blankets to the needy.",
+            "Practice silent meditation and detachment from outcome — Ketu rewards inner work.",
+        ],
+    },
+}
+
+
+def _compute_sign_changes(graha_gochar: dict, base_jd: float) -> dict:
+    """For each planet in graha_gochar, estimate days until sign change using JD+1 daily motion.
+
+    Returns {planet_name: {"days": int, "next_sign": str}} or {} per planet if unavailable.
+    Single extra call to get_all_planet_positions at JD+1 for efficiency.
+    """
+    try:
+        tomorrow_pos = get_all_planet_positions(TS.tt_jd(base_jd + 1.0))
+    except Exception:
+        return {}
+
+    result = {}
+    for planet, info in graha_gochar.items():
+        try:
+            cur_lon = float(info.get("longitude", 0))
+            tmr_lon = float(tomorrow_pos[planet]["longitude"])
+            daily_motion = tmr_lon - cur_lon
+            if daily_motion > 180:
+                daily_motion -= 360
+            elif daily_motion < -180:
+                daily_motion += 360
+
+            if abs(daily_motion) < 1e-6:
+                continue
+
+            if daily_motion > 0:
+                degrees_left = 30.0 - (cur_lon % 30.0)
+                next_idx = (int(cur_lon // 30) + 1) % 12
+            else:
+                degrees_left = cur_lon % 30.0
+                next_idx = (int(cur_lon // 30) - 1) % 12
+
+            days = max(1, round(degrees_left / abs(daily_motion)))
+            result[planet] = {"days": days, "next_sign": rashi_names[next_idx]}
+        except Exception:
+            continue
+    return result
+
+
+def _personalized_transits(rashi, graha_gochar, sign_changes=None):
     if not rashi or not graha_gochar:
         return []
     base_idx = rashi_names.index(rashi)
+    sc = sign_changes or {}
     output = []
     for planet, info in graha_gochar.items():
         trans_rashi = info.get("rashi")
@@ -2049,12 +2359,16 @@ def _personalized_transits(rashi, graha_gochar):
         house = ((rashi_names.index(trans_rashi) - base_idx) % 12) + 1
         house_theme = HOUSE_THEMES.get(house, "key life areas")
         planet_effect = PLANET_TRANSIT_EFFECT.get(planet, "shifts the tone of this house")
+        change = sc.get(planet, {})
         output.append({
             "planet": planet,
             "transit_rashi": trans_rashi,
             "house_from_rashi": house,
             "house_theme": house_theme,
             "planet_effect": planet_effect,
+            "days_until_sign_change": change.get("days"),
+            "next_sign": change.get("next_sign"),
+            "pooja_practices": TRANSIT_POOJA_PRACTICES.get(planet, {}),
             "message": (
                 f"{planet} transiting {trans_rashi} is in your house {house}. "
                 f"It activates {house_theme} and {planet_effect}."
@@ -2064,7 +2378,7 @@ def _personalized_transits(rashi, graha_gochar):
     return output
 
 
-def _personalized_transits_from_kundali(kundali_result, graha_gochar):
+def _personalized_transits_from_kundali(kundali_result, graha_gochar, sign_changes=None):
     base_rashi = (
         _extract_rashi_name((kundali_result or {}).get("lagna"))
         or _extract_rashi_name((kundali_result or {}).get("rashi"))
@@ -2073,6 +2387,7 @@ def _personalized_transits_from_kundali(kundali_result, graha_gochar):
         return []
 
     natal_house_map = _build_natal_house_map(kundali_result)
+    sc = sign_changes or {}
     output = []
     base_idx = rashi_names.index(base_rashi)
     for planet, info in (graha_gochar or {}).items():
@@ -2086,7 +2401,7 @@ def _personalized_transits_from_kundali(kundali_result, graha_gochar):
         movement_text = ""
         if natal_house:
             movement_text = f" In your birth chart, {planet} is in house {natal_house} ({natal_sign or 'natal sign unavailable'})."
-
+        change = sc.get(planet, {})
         output.append({
             "planet": planet,
             "transit_rashi": trans_rashi,
@@ -2095,6 +2410,9 @@ def _personalized_transits_from_kundali(kundali_result, graha_gochar):
             "planet_effect": PLANET_TRANSIT_EFFECT.get(planet, "shifts the tone of this house"),
             "natal_house": natal_house,
             "natal_sign": natal_sign,
+            "days_until_sign_change": change.get("days"),
+            "next_sign": change.get("next_sign"),
+            "pooja_practices": TRANSIT_POOJA_PRACTICES.get(planet, {}),
             "message": (
                 f"{planet} transiting {trans_rashi} is in your house {house}.{movement_text} "
                 f"It activates {HOUSE_THEMES.get(house, 'key life areas')}."
@@ -2431,22 +2749,39 @@ def build_app_response(day_data, upcoming_spiritual_events, rashi=None, person_n
         kundali_data = _fetch_kundali_report(birth_details or {}, fallback_tz_name, person_name)
     kundali_result = kundali_data.get("result") if kundali_data.get("ok") else None
 
-    personalized_transits = _personalized_transits_from_kundali(kundali_result, day_data.get("graha_gochar"))
+    graha_gochar = day_data.get("graha_gochar") or {}
+    # Compute sign changes once (one extra planet position call at JD+1)
+    try:
+        date_str = day_data.get("date", "")
+        base_jd = float(TS.from_datetime(
+            pytz.timezone(fallback_tz_name).localize(
+                datetime.strptime(date_str, "%Y-%m-%d").replace(hour=12)
+            ).astimezone(pytz.utc)
+        ).tt) if date_str else None
+    except Exception:
+        base_jd = None
+    sign_changes = _compute_sign_changes(graha_gochar, base_jd) if base_jd else {}
+
+    personalized_transits = _personalized_transits_from_kundali(kundali_result, graha_gochar, sign_changes)
     transit_base_rashi = (
         _extract_rashi_name((kundali_result or {}).get("lagna"))
         or _extract_rashi_name((kundali_result or {}).get("rashi"))
     )
+    effective_horoscope_rashi = requested_rashi or transit_base_rashi
+
+    # Fall back to rashi-based transits when no kundali is available
+    if not personalized_transits and effective_horoscope_rashi:
+        personalized_transits = _personalized_transits(effective_horoscope_rashi, graha_gochar, sign_changes)
+
     for t in personalized_transits:
         t["detailed_prediction"] = _detailed_transit_prediction(
             t.get("planet"), t.get("transit_rashi"), int(t.get("house_from_rashi", 0) or 0)
         )
 
-    effective_horoscope_rashi = requested_rashi or transit_base_rashi
-
     real_today_horoscope = _build_real_horoscope_from_transits(
         effective_horoscope_rashi,
         day_data,
-        _personalized_transits(effective_horoscope_rashi, day_data.get("graha_gochar")),
+        _personalized_transits(effective_horoscope_rashi, graha_gochar, sign_changes),
         person_name,
         kundali_result,
     ) if effective_horoscope_rashi else {
@@ -2459,7 +2794,7 @@ def build_app_response(day_data, upcoming_spiritual_events, rashi=None, person_n
     else:
         general_all = []
         for item_rashi in rashi_names:
-            r_transits = _personalized_transits(item_rashi, day_data.get("graha_gochar"))
+            r_transits = _personalized_transits(item_rashi, graha_gochar, sign_changes)
             general_all.append(_build_real_horoscope_from_transits(item_rashi, day_data, r_transits))
 
     return {
