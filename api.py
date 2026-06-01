@@ -564,6 +564,145 @@ YOGA_AUSPICIOUS = {
     "Brahma":True,"Indra":True,"Vaidhriti":False,
 }
 
+# Maps Navagraha planet names to deity names as returned by the mantra API
+PLANET_TO_DEITY_NAME = {
+    "Sun":     "Surya",
+    "Moon":    "Chandra",
+    "Mars":    "Skanda (Kartikeya)",
+    "Mercury": "Vishnu (Budha)",
+    "Jupiter": "Brihaspati (Guru)",
+    "Venus":   "Shukracharya",
+    "Saturn":  "Shani",
+    "Rahu":    "Bhairava (Rahu)",
+    "Ketu":    "Ganesha (Ketu)",
+}
+
+WEEKDAY_PLANET = {
+    "Sunday":    "Sun",
+    "Monday":    "Moon",
+    "Tuesday":   "Mars",
+    "Wednesday": "Mercury",
+    "Thursday":  "Jupiter",
+    "Friday":    "Venus",
+    "Saturday":  "Saturn",
+}
+
+MANTRA_API_URL = "https://nepa-app-uat.nepalirudraksha.com/api/v2/mantra/deities/with-mantras"
+
+# ============================================================
+# 3.5) MANTRA FETCH & RECOMMENDATION
+# ============================================================
+@lru_cache(maxsize=7)
+def _fetch_mantra_data_cached(_date_str: str):
+    """Fetch mantra/deity data from the mantras API, cached once per calendar day.
+    Raises on failure so lru_cache does not store the error result."""
+    req = urlrequest.Request(MANTRA_API_URL, headers={"Accept": "application/json"})
+    with urlrequest.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read().decode("utf-8")).get("data") or []
+
+
+def get_mantra_data():
+    """Return mantra data, silently returning [] if the API is unreachable."""
+    try:
+        return _fetch_mantra_data_cached(datetime.now(pytz.utc).strftime("%Y-%m-%d"))
+    except Exception:
+        return []
+
+
+def get_recommended_mantras(day_of_week, nakshatra_name, tithi_number, paksha,
+                             yoga_name, festivals, mantra_data):
+    """Return 3–4 mantras recommended based on today's panchanga.
+
+    Priority order:
+    1. Day ruling planet  (always included)
+    2. Nakshatra lord     (if distinct from the day lord)
+    3. Tithi / festival   (Chaturthi→Ganesha, Ekadashi→Vishnu, Pradosh→Bhairava …)
+    4. Protective fill    (inauspicious yoga→Ganesha; else Jupiter for universal wisdom;
+                           final fill by paksha if still under 3)
+    """
+    deity_map = {d["name"]: d for d in (mantra_data or [])}
+
+    selected = []   # list of (priority, mantra_dict)
+    seen_deity = set()
+
+    def _add(deity_name, reason, priority):
+        if not deity_name or deity_name in seen_deity or deity_name not in deity_map:
+            return
+        deity = deity_map[deity_name]
+        if not deity.get("mantras"):
+            return
+        m = deity["mantras"][0]
+        selected.append((priority, {
+            "mantra_id":     m["id"],
+            "title":         m["title"],
+            "deity":         deity_name,
+            "deity_id":      deity["id"],
+            "reason":        reason,
+            "mantra_details": m.get("mantra_details", ""),
+            "description":   m.get("description", ""),
+        }))
+        seen_deity.add(deity_name)
+
+    # 1. Day ruling planet
+    day_planet = WEEKDAY_PLANET.get(day_of_week, "")
+    if day_planet:
+        _add(PLANET_TO_DEITY_NAME.get(day_planet, ""),
+             f"Ruling planet of {day_of_week}", 0)
+
+    # 2. Nakshatra lord
+    if nakshatra_name in nakshatras:
+        nak_lord = NAKSHATRA_LORDS[nakshatras.index(nakshatra_name)]
+        _add(PLANET_TO_DEITY_NAME.get(nak_lord, ""),
+             f"Lord of {nakshatra_name} nakshatra", 1)
+
+    # 3. Tithi / festival context
+    ctx_deity = ctx_reason = None
+    if tithi_number in (4, 19):
+        ctx_deity, ctx_reason = "Ganesha (Ketu)", "Chaturthi — auspicious for Ganesha worship"
+    elif tithi_number in (11, 26):
+        ctx_deity, ctx_reason = "Vishnu (Budha)", "Ekadashi — sacred to Lord Vishnu"
+    elif tithi_number == 15:
+        ctx_deity, ctx_reason = "Chandra", "Purnima — full moon blessings"
+    elif tithi_number == 30:
+        ctx_deity, ctx_reason = "Ganesha (Ketu)", "Amavasya — ancestor peace and Ketu"
+    elif tithi_number in (13, 28):
+        ctx_deity, ctx_reason = "Bhairava (Rahu)", "Pradosh Trayodashi — Bhairava / Shiva worship"
+    elif tithi_number in (8, 23):
+        ctx_deity, ctx_reason = "Bhairava (Rahu)", "Ashtami — auspicious for Bhairava worship"
+    else:
+        for f in (festivals or []):
+            fl = f.lower()
+            if any(k in fl for k in ("ganesh", "chaturthi", "vinayaka")):
+                ctx_deity, ctx_reason = "Ganesha (Ketu)", f"Festival: {f}"; break
+            if any(k in fl for k in ("krishna", "janmashtami", "ekadashi", "vishnu", "rama navami")):
+                ctx_deity, ctx_reason = "Vishnu (Budha)", f"Festival: {f}"; break
+            if any(k in fl for k in ("shivaratri", "pradosh")):
+                ctx_deity, ctx_reason = "Bhairava (Rahu)", f"Festival: {f}"; break
+            if any(k in fl for k in ("sankranti", "pongal", "ratha saptami")):
+                ctx_deity, ctx_reason = "Surya", f"Festival: {f}"; break
+            if "guru purnima" in fl:
+                ctx_deity, ctx_reason = "Brihaspati (Guru)", f"Festival: {f}"; break
+
+    if ctx_deity:
+        _add(ctx_deity, ctx_reason, 2)
+
+    # 4a. Inauspicious yoga → Ganesha for protection
+    if len(selected) < 3 and not YOGA_AUSPICIOUS.get(yoga_name, True):
+        _add("Ganesha (Ketu)", f"{yoga_name} Yoga — seek Ganesha's protection", 3)
+
+    # 4b. Jupiter fills universally — brings wisdom and auspiciousness
+    if len(selected) < 3:
+        _add("Brihaspati (Guru)", "Universal: wisdom and auspiciousness (Jupiter)", 4)
+
+    # 4c. Paksha-appropriate final fill
+    if len(selected) < 3:
+        fill = "Vishnu (Budha)" if paksha == "Shukla Paksha" else "Shani"
+        _add(fill, f"Supportive mantra for {paksha}", 5)
+
+    selected.sort(key=lambda x: x[0])
+    return [s[1] for s in selected[:4]]
+
+
 # ============================================================
 # 4) PERFORMANCE CACHES / HELPERS
 # ============================================================
@@ -2828,6 +2967,7 @@ def build_app_response(day_data, upcoming_spiritual_events, rashi=None, person_n
         "personalized_planetary_transits": personalized_transits,
         "today_horoscope": real_today_horoscope,
         "general_horoscope_all_rashi": general_all,
+        "recommended_mantras": day_data.get("recommended_mantras") or [],
         "personalization_meta": {
             "effective_rashi_for_horoscope": effective_horoscope_rashi,
             "horoscope_status": "ok" if effective_horoscope_rashi else "no_rashi_provided",
@@ -3032,6 +3172,16 @@ def calculate_panchanga_for_date(latitude, longitude, target_date_naive, tz_name
     )
     day_duration = (sunset - sunrise).total_seconds() / 3600
 
+    recommended_mantras = get_recommended_mantras(
+        target_date_local.strftime("%A"),
+        nakshatra_name,
+        tithi_number,
+        paksha,
+        yoga_name,
+        festival_today,
+        get_mantra_data(),
+    )
+
     return {
         "date": date_ymd,
         "day_of_week": target_date_local.strftime("%A"),
@@ -3093,6 +3243,7 @@ def calculate_panchanga_for_date(latitude, longitude, target_date_naive, tz_name
         "durmuhurta":  durmuhurta,
         "amrit_kaal":  amrit_kaal,
         "varjyam":     varjyam,
+        "recommended_mantras": recommended_mantras,
     }
     result["daily_summary"] = generate_daily_summary(result)
     return result
@@ -3216,6 +3367,15 @@ def astrology_api_view():
 
         pooja_today = get_poojas_for_day(tithi_number, paksha, amanta_month,
                                          now_local.strftime("%A"), all_festivals)
+        recommended_mantras = get_recommended_mantras(
+            now_local.strftime("%A"),
+            nakshatra_name,
+            tithi_number,
+            paksha,
+            yoga_name,
+            festival_today,
+            get_mantra_data(),
+        )
         upcoming_poojas = get_upcoming_poojas(
             lat_r, lon_r, timezone_str, now_local.date(), days_ahead=7,
             month_system=month_system
@@ -3283,6 +3443,7 @@ def astrology_api_view():
             "vrata_today":     vrata_today,
             "pooja_today":     pooja_today,
             "upcoming_poojas": upcoming_poojas,
+            "recommended_mantras": recommended_mantras,  # consumed by build_app_response; excluded from order_day_payload
             # --- Significance ---
             "significance": significance_text,
             # --- Muhurats ---
