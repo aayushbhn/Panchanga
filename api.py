@@ -1185,17 +1185,150 @@ _DURMUHURTA_SIG = ("Avoid starting new ventures, ceremonies, travel, or signing 
                    "Routine work and spiritual practice are acceptable during this period.")
 _NO_DURMUHURTA  = "No Durmuhurta today — Thursday (Guruvar) is auspicious and free of this inauspicious period."
 
-def calculate_durmuhurta(sunrise, sunset, weekday):
+def _desc_brahma(start_str, end_str):
+    return (
+        f"Brahma Muhurta today runs from {start_str} to {end_str}. "
+        "This is the most sacred period of the day, occurring approximately 1 hour 30 minutes before sunrise. "
+        "The mind is naturally calm, the environment is pure, and spiritual energy is at its peak — making it "
+        "ideal for meditation, mantra chanting, sadhana, and self-reflection. Even a short practice at this "
+        "hour carries greater potency than longer efforts made later in the day."
+    )
+
+
+def _desc_abhijit(start_str, end_str):
+    return (
+        f"Abhijit Muhurta today runs from {start_str} to {end_str}. "
+        "This is the most powerful auspicious window of the daytime, falling around solar noon "
+        "(the 8th of 15 daytime muhurtas). Ancient texts say it can override the negativity of "
+        "other inauspicious periods. Ruled by Lord Vishnu, this is the ideal time to start important "
+        "new work, sign agreements, begin journeys, or undertake anything of significance."
+    )
+
+
+def _desc_rahu(start_str, end_str, day_name):
+    return (
+        f"Rahu Kaal today runs from {start_str} to {end_str}. "
+        f"On {day_name}, it falls in this window — the timing shifts each day. "
+        "This period is ruled by Rahu, the shadow planet of illusion and sudden change. "
+        "New ventures, important decisions, signings, and auspicious ceremonies are best avoided. "
+        "Routine tasks may continue, and the period can be used for Rahu-related spiritual remedies."
+    )
+
+
+def _desc_gulika(start_str, end_str, day_name):
+    return (
+        f"Gulika Kaal today runs from {start_str} to {end_str}. "
+        f"On {day_name}, Gulika (Mandi) — a sub-planet of Saturn — rules this window. "
+        "It is considered malefic for starting activities related to wealth, relationships, and health. "
+        "Business deals, investments, and important ceremonies are best postponed. The period is suitable "
+        "for Saturn worship, completing existing tasks, and acts of service."
+    )
+
+
+def _desc_yamaganda(start_str, end_str, day_name):
+    return (
+        f"Yamaganda Kaal today runs from {start_str} to {end_str}. "
+        f"On {day_name}, this inauspicious period falls in this slot. "
+        "Associated with Yama, the lord of death and karma, it is traditionally avoided for new starts, "
+        "travel, auspicious ceremonies, and important decisions. Use this window to complete pending "
+        "tasks, reflect, or perform ancestor-related prayers rather than begin anything new."
+    )
+
+
+def _desc_amrit_kaal(windows, nakshatra_name):
+    if windows:
+        slots = " and ".join(f"{w[0]} – {w[1]}" for w in windows[:2])
+        return (
+            f"Amrit Kaal today occurs at {slots}, arising from the {nakshatra_name} nakshatra transit. "
+            "'Amrit' means nectar — anything begun in this window carries heightened positive energy. "
+            "It is ideal for starting new work, performing puja, beginning journeys, or taking medicine. "
+            "Even short prayers or intentions set during Amrit Kaal give elevated results."
+        )
+    return (
+        f"No Amrit Kaal window falls during today's active hours under {nakshatra_name} nakshatra. "
+        "This is rare — focus on Abhijit Muhurta or other auspicious Choghadiya slots for important starts."
+    )
+
+
+def _desc_durmuhurta(windows, day_name):
+    if not windows:
+        return (
+            f"No Durmuhurta today — {day_name} (Guruvar) is ruled by Jupiter and is entirely free of "
+            "this inauspicious period, making it especially favorable for new starts and auspicious activities."
+        )
+    slots = " and ".join(f"{w[0]} – {w[1]}" for w in windows)
+    return (
+        f"Durmuhurta today falls between {slots}. "
+        "These windows are ruled by malefic energies believed to create obstacles for new ventures, "
+        "ceremonies, or major decisions. Routine work and protective spiritual practices are acceptable, "
+        "but new starts, purchases, travel, and auspicious events should be postponed until the period passes."
+    )
+
+
+def _desc_varjyam(start_str, end_str, nakshatra_name):
+    return (
+        f"Varjyam today falls between {start_str} and {end_str}, based on the {nakshatra_name} nakshatra transit. "
+        "'Varjyam' means 'to be avoided' — puja installations, surgeries, new starts, and major decisions "
+        "are traditionally deferred during this window. Its timing shifts with each nakshatra. "
+        "Existing tasks and routine work remain unaffected."
+    )
+
+EVENT_DEITY_MAP = {
+    "ekadashi":      {"name": "Lord Vishnu",                 "description": "Ekadashi is dedicated to Lord Vishnu, the preserver of the universe. Fasting and prayer on this day invoke his blessings for spiritual merit, mental purification, and liberation."},
+    "pradosh":       {"name": "Lord Shiva",                  "description": "Pradosh Vrat is dedicated to Lord Shiva. Twilight worship during Pradosh dissolves sins, grants inner peace, and removes obstacles through Shiva's transformative grace."},
+    "chaturthi":     {"name": "Lord Ganesha",                "description": "Chaturthi is dedicated to Lord Ganesha, the remover of obstacles and bestower of wisdom. Worship seeks his blessings for new beginnings, clarity, and smooth progress."},
+    "sankashti":     {"name": "Lord Ganesha",                "description": "Sankashti Chaturthi is dedicated to Lord Ganesha who grants deliverance from troubles. Devotees fast through the day and break it after moonrise with Ganesha's blessings."},
+    "vinayaka":      {"name": "Lord Ganesha",                "description": "Vinayaka Chaturthi honors Lord Ganesha as the first deity of all auspicious beginnings. Worship on this day brings wisdom, success, and the removal of all obstacles."},
+    "purnima":       {"name": "Lord Vishnu / Chandra Deva",  "description": "Purnima is associated with Lord Vishnu and Chandra Deva (the Moon). The full moon amplifies spiritual energy, making it ideal for gratitude, charity, and Satya Narayan puja."},
+    "amavasya":      {"name": "Pitru Devatas (Ancestors)",   "description": "Amavasya is sacred to the Pitru Devatas — departed ancestral souls. Tarpan and charitable acts on this day bring peace to ancestors and help relieve karmic debts."},
+    "navaratri":     {"name": "Goddess Durga (Navadurga)",   "description": "Navaratri celebrates Goddess Durga in her nine divine forms. Each day invokes a different aspect of Shakti for protection, strength, wisdom, and victory over negativity."},
+    "navratri":      {"name": "Goddess Durga (Navadurga)",   "description": "Navratri celebrates Goddess Durga's nine forms. Daily puja, fasting, and scripture reading channel her Shakti energy for courage, protection, and inner transformation."},
+    "shivaratri":    {"name": "Lord Shiva",                  "description": "Maha Shivaratri honors Lord Shiva through an all-night vigil, fasting, and abhishek. It is considered the most powerful night of the year for Shiva devotion and inner transformation."},
+    "janmashtami":   {"name": "Lord Krishna",                "description": "Janmashtami celebrates the birth of Lord Krishna. Midnight vigil, fasting, and bhajan on this night are believed to grant devotion, joy, and protection from negativity."},
+    "krishna":       {"name": "Lord Krishna",                "description": "Lord Krishna, the eighth avatar of Vishnu, embodies divine joy, wisdom, and love. Worship invokes his guidance for dharmic living, inner clarity, and devotional practice."},
+    "rama navami":   {"name": "Lord Rama",                   "description": "Rama Navami celebrates the birth of Lord Rama, the ideal king and seventh avatar of Vishnu. Worship invokes his blessings for righteousness, family harmony, and courage."},
+    "guru purnima":  {"name": "Brihaspati / Adi Guru",       "description": "Guru Purnima honors the lineage of spiritual teachers. Gratitude offered to one's Guru strengthens the guru-disciple bond and opens the channel for wisdom and grace."},
+    "ganesh":        {"name": "Lord Ganesha",                "description": "This festival is dedicated to Lord Ganesha, the first deity worshipped before any auspicious undertaking. He grants wisdom, prosperity, and the removal of all obstacles."},
+    "dussehra":      {"name": "Goddess Durga / Lord Rama",   "description": "Dussehra marks Rama's victory over Ravana and Durga's over Mahishasura — the triumph of righteousness over evil. A powerful day for courage, renewal, and gratitude."},
+    "vijayadashami": {"name": "Goddess Durga / Lord Rama",   "description": "Vijayadashami celebrates divine victory. Beginning new learning, skills, or ventures on this day is considered especially auspicious and blessed."},
+    "diwali":        {"name": "Goddess Lakshmi",             "description": "Diwali's Lakshmi Puja is dedicated to Goddess Lakshmi, the deity of wealth and abundance. Lighting diyas and performing puja invites her blessings of prosperity and light."},
+    "vasant panchami": {"name": "Goddess Saraswati",         "description": "Vasant Panchami is dedicated to Goddess Saraswati, the deity of knowledge, arts, and wisdom. Students and creators seek her blessings for learning, eloquence, and creativity."},
+    "raksha bandhan": {"name": "Lord Vishnu / Indra Deva",   "description": "Raksha Bandhan invokes divine protection through the sacred thread. It is associated with Lord Vishnu's protection and the strength of the sibling bond."},
+    "akshaya tritiya": {"name": "Lord Vishnu / Lakshmi",     "description": "Akshaya Tritiya is one of the most auspicious days of the year, sacred to Vishnu and Lakshmi. 'Akshaya' means imperishable — any virtuous act done today yields unending merit."},
+}
+
+
+def _event_deity(event_name, paksha=None):
+    """Return the primary deity associated with a spiritual event."""
+    e = (event_name or "").lower()
+    for key, deity in EVENT_DEITY_MAP.items():
+        if key in e:
+            return deity
+    if paksha == "Shukla Paksha":
+        return {
+            "name": "Lord Vishnu",
+            "description": "Shukla Paksha is governed by the growing Moon and associated with Lord Vishnu, supporting growth, new beginnings, and all constructive actions.",
+        }
+    return {
+        "name": "Lord Shiva / Pitru Devatas",
+        "description": "Krishna Paksha, the waning lunar fortnight, is associated with introspection, ancestor reverence, and the transformative energy of Lord Shiva.",
+    }
+
+def calculate_durmuhurta(sunrise, sunset, weekday, day_name=""):
     muhurta = (sunset - sunrise).total_seconds() / 15
     indices = DURMUHURTA_INDEX[weekday]
-    if not indices:
-        return {"windows": [], "significance": _NO_DURMUHURTA}
     windows = []
-    for idx in indices:
-        s = sunrise + timedelta(seconds=muhurta * idx)
-        e = s + timedelta(seconds=muhurta)
-        windows.append([s.strftime("%I:%M %p"), e.strftime("%I:%M %p")])
-    return {"windows": windows, "significance": _DURMUHURTA_SIG}
+    if indices:
+        for idx in indices:
+            s = sunrise + timedelta(seconds=muhurta * idx)
+            e = s + timedelta(seconds=muhurta)
+            windows.append([s.strftime("%I:%M %p"), e.strftime("%I:%M %p")])
+    significance = _NO_DURMUHURTA if not windows else _DURMUHURTA_SIG
+    return {
+        "windows":     windows,
+        "significance": significance,
+        "description": _desc_durmuhurta(windows, day_name or "today"),
+    }
 
 
 # ============================================================
@@ -1216,17 +1349,21 @@ def estimate_nakshatra_start_utc(moon_sid_deg, now_utc, nak_end_utc):
 # ============================================================
 # VARJYAM
 # ============================================================
-def calculate_varjyam(nak_idx, nak_start_utc, nak_end_utc, tz):
+def calculate_varjyam(nak_idx, nak_start_utc, nak_end_utc, tz, nakshatra_name=""):
     offset_g, dur_g = VARJYAM_TABLE[nak_idx]
     end = nak_end_utc if nak_end_utc else (nak_start_utc + timedelta(hours=25))
     ghati   = (end - nak_start_utc).total_seconds() / 60.0
     v_start = nak_start_utc + timedelta(seconds=ghati * offset_g)
     v_end   = v_start       + timedelta(seconds=ghati * dur_g)
+    start_str = v_start.astimezone(tz).strftime("%I:%M %p")
+    end_str   = v_end.astimezone(tz).strftime("%I:%M %p")
+    nak_label = nakshatra_name or nakshatras[nak_idx]
     return {
-        "start": v_start.astimezone(tz).strftime("%I:%M %p"),
-        "end":   v_end.astimezone(tz).strftime("%I:%M %p"),
+        "start": start_str,
+        "end":   end_str,
         "significance": ("Inauspicious window based on the current nakshatra. "
                          "Avoid starting new work, ceremonies, or important decisions during this time."),
+        "description": _desc_varjyam(start_str, end_str, nak_label),
     }
 
 
@@ -1759,8 +1896,8 @@ def get_upcoming_poojas(lat_r, lon_r, tz_name, from_date, days_ahead=7, month_sy
                 abh_s, abh_e = calculate_abhijit_muhurat(sr_l, ss_l)
                 brh_s, brh_e = calculate_brahma_muhurat(sr_l, ss_l)
                 day_muhurat = [
-                    {"abhijit": [abh_s.strftime("%I:%M:%S %p"), abh_e.strftime("%I:%M:%S %p")]},
-                    {"brahma":  [brh_s.strftime("%I:%M:%S %p"), brh_e.strftime("%I:%M:%S %p")]},
+                    {"abhijit": [abh_s.strftime("%I:%M:%S %p"), abh_e.strftime("%I:%M:%S %p")], "description": _desc_abhijit(abh_s.strftime("%I:%M %p"), abh_e.strftime("%I:%M %p"))},
+                    {"brahma":  [brh_s.strftime("%I:%M:%S %p"), brh_e.strftime("%I:%M:%S %p")], "description": _desc_brahma(brh_s.strftime("%I:%M %p"),  brh_e.strftime("%I:%M %p"))},
                 ]
             except Exception:
                 day_muhurat = []
@@ -1823,8 +1960,8 @@ def _precompute_month_events_and_poojas(lat_r, lon_r, tz_name, year, month, mont
             abh_s, abh_e = calculate_abhijit_muhurat(sr_local, ss_local)
             brh_s, brh_e = calculate_brahma_muhurat(sr_local, ss_local)
             day_muhurat = [
-                {"abhijit": [abh_s.strftime("%I:%M:%S %p"), abh_e.strftime("%I:%M:%S %p")]},
-                {"brahma":  [brh_s.strftime("%I:%M:%S %p"), brh_e.strftime("%I:%M:%S %p")]},
+                {"abhijit": [abh_s.strftime("%I:%M:%S %p"), abh_e.strftime("%I:%M:%S %p")], "description": _desc_abhijit(abh_s.strftime("%I:%M %p"), abh_e.strftime("%I:%M %p"))},
+                {"brahma":  [brh_s.strftime("%I:%M:%S %p"), brh_e.strftime("%I:%M:%S %p")], "description": _desc_brahma(brh_s.strftime("%I:%M %p"),  brh_e.strftime("%I:%M %p"))},
             ]
         except Exception:
             day_muhurat = []
@@ -1846,6 +1983,7 @@ def _precompute_month_events_and_poojas(lat_r, lon_r, tz_name, year, month, mont
                 "paksha":                paksha,
                 "event":                 event_title,
                 "all_events":            event_titles,
+                "deity":                 _event_deity(event_title, paksha),
                 "description":           guidance.get("description", ""),
                 "why_it_matters":        guidance["why_it_matters"],
                 "who_should_use_it":     guidance["who_should_use_it"],
@@ -2082,6 +2220,7 @@ def get_upcoming_spiritual_events(lat_r, lon_r, tz_name, from_date, days_ahead=7
             "paksha": paksha,
             "event": event_title,
             "all_events": event_titles,
+            "deity": _event_deity(event_title, paksha),
             "description": guidance.get("description", ""),
             "why_it_matters": guidance["why_it_matters"],
             "who_should_use_it": guidance["who_should_use_it"],
@@ -2950,6 +3089,7 @@ def build_app_response(day_data, upcoming_spiritual_events, rashi=None, person_n
             "title": primary_event,
             "date": day_data.get("date"),
             "day": day_data.get("day_of_week"),
+            "deity": _event_deity(primary_event, day_data.get("paksha")),
             "muhurat_hint": (day_data.get("subh_muhurat") or [{}])[0],
             "why_it_matters": today_guidance["why_it_matters"],
             "who_should_use_it": today_guidance["who_should_use_it"],
@@ -3095,7 +3235,7 @@ def calculate_panchanga_for_date(latitude, longitude, target_date_naive, tz_name
     brahma_start,   brahma_end   = calculate_brahma_muhurat(sunrise, sunset)
 
     choghadiya  = calculate_choghadiya(sunrise, sunset, next_sunrise, weekday)
-    durmuhurta  = calculate_durmuhurta(sunrise, sunset, weekday)
+    durmuhurta  = calculate_durmuhurta(sunrise, sunset, weekday, target_date_local.strftime("%A"))
 
     current_year  = target_date_naive.year
     current_month = target_date_naive.month
@@ -3154,7 +3294,7 @@ def calculate_panchanga_for_date(latitude, longitude, target_date_naive, tz_name
     nak_end_utc   = nak_end_local.astimezone(pytz.utc) if nak_end_local else None
     now_utc       = target_date_local.astimezone(pytz.utc)
     nak_start_utc = estimate_nakshatra_start_utc(moon_sid, now_utc, nak_end_utc)
-    varjyam       = calculate_varjyam(nak_idx, nak_start_utc, nak_end_utc, tz)
+    varjyam       = calculate_varjyam(nak_idx, nak_start_utc, nak_end_utc, tz, nakshatra_name)
 
     amrit_windows = [[s["start"], s["end"]] for s in choghadiya["day"] + choghadiya["night"]
                      if s["name"] == "Amrit"]
@@ -3163,6 +3303,7 @@ def calculate_panchanga_for_date(latitude, longitude, target_date_naive, tz_name
         "significance": ("Most auspicious window of the day based on lunar nakshatra. "
                          "Begin important work, perform puja, start journeys, or take medicine "
                          "during Amrit Kaal for the best results."),
+        "description": _desc_amrit_kaal(amrit_windows, nakshatra_name),
     }
 
     significance_text = generate_significance(
@@ -3231,13 +3372,13 @@ def calculate_panchanga_for_date(latitude, longitude, target_date_naive, tz_name
         "significance": significance_text,
         # --- Muhurats ---
         "subh_muhurat": [
-            {"abhijit":      [abhijit_start.strftime("%I:%M:%S %p"), abhijit_end.strftime("%I:%M:%S %p")]},
-            {"brahma":       [brahma_start.strftime("%I:%M:%S %p"),  brahma_end.strftime("%I:%M:%S %p")]},
+            {"abhijit": [abhijit_start.strftime("%I:%M:%S %p"), abhijit_end.strftime("%I:%M:%S %p")], "description": _desc_abhijit(abhijit_start.strftime("%I:%M %p"), abhijit_end.strftime("%I:%M %p"))},
+            {"brahma":  [brahma_start.strftime("%I:%M:%S %p"),  brahma_end.strftime("%I:%M:%S %p")],  "description": _desc_brahma(brahma_start.strftime("%I:%M %p"),   brahma_end.strftime("%I:%M %p"))},
         ],
         "asubh_muhurat": [
-            {"rahu":     [rahu_start.strftime("%I:%M:%S %p"),      rahu_end.strftime("%I:%M:%S %p")]},
-            {"gulika":   [gulika_start.strftime("%I:%M:%S %p"),    gulika_end.strftime("%I:%M:%S %p")]},
-            {"yamaganda":[yamaganda_start.strftime("%I:%M:%S %p"), yamaganda_end.strftime("%I:%M:%S %p")]},
+            {"rahu":      [rahu_start.strftime("%I:%M:%S %p"),      rahu_end.strftime("%I:%M:%S %p")],      "description": _desc_rahu(rahu_start.strftime("%I:%M %p"),           rahu_end.strftime("%I:%M %p"),      target_date_local.strftime("%A"))},
+            {"gulika":    [gulika_start.strftime("%I:%M:%S %p"),    gulika_end.strftime("%I:%M:%S %p")],    "description": _desc_gulika(gulika_start.strftime("%I:%M %p"),       gulika_end.strftime("%I:%M %p"),    target_date_local.strftime("%A"))},
+            {"yamaganda": [yamaganda_start.strftime("%I:%M:%S %p"), yamaganda_end.strftime("%I:%M:%S %p")], "description": _desc_yamaganda(yamaganda_start.strftime("%I:%M %p"), yamaganda_end.strftime("%I:%M %p"), target_date_local.strftime("%A"))},
         ],
         "choghadiya":  choghadiya,
         "durmuhurta":  durmuhurta,
@@ -3330,7 +3471,7 @@ def astrology_api_view():
         brahma_start,   brahma_end   = calculate_brahma_muhurat(sunrise, sunset)
 
         choghadiya = calculate_choghadiya(sunrise, sunset, next_sunrise, weekday)
-        durmuhurta = calculate_durmuhurta(sunrise, sunset, weekday)
+        durmuhurta = calculate_durmuhurta(sunrise, sunset, weekday, now_local.strftime("%A"))
         amrit_windows = [[s["start"], s["end"]] for s in choghadiya["day"] + choghadiya["night"]
                          if s["name"] == "Amrit"]
         amrit_kaal = {
@@ -3338,6 +3479,7 @@ def astrology_api_view():
             "significance": ("Most auspicious window of the day based on lunar nakshatra. "
                              "Begin important work, perform puja, start journeys, or take medicine "
                              "during Amrit Kaal for the best results."),
+            "description": _desc_amrit_kaal(amrit_windows, nakshatra_name),
         }
 
         current_year  = now_local.year
@@ -3385,7 +3527,7 @@ def astrology_api_view():
         nak_end_utc   = nak_end_local.astimezone(pytz.utc) if nak_end_local else None
         now_utc_dt    = now_local.astimezone(pytz.utc)
         nak_start_utc = estimate_nakshatra_start_utc(moon_sid, now_utc_dt, nak_end_utc)
-        varjyam       = calculate_varjyam(nak_idx, nak_start_utc, nak_end_utc, tz)
+        varjyam       = calculate_varjyam(nak_idx, nak_start_utc, nak_end_utc, tz, nakshatra_name)
 
         day_duration = (sunset - sunrise).total_seconds() / 3600
         significance_text = generate_significance(
@@ -3448,13 +3590,13 @@ def astrology_api_view():
             "significance": significance_text,
             # --- Muhurats ---
             "subh_muhurat": [
-                {"abhijit": [abhijit_start.strftime("%I:%M:%S %p"), abhijit_end.strftime("%I:%M:%S %p")]},
-                {"brahma":  [brahma_start.strftime("%I:%M:%S %p"),  brahma_end.strftime("%I:%M:%S %p")]},
+                {"abhijit": [abhijit_start.strftime("%I:%M:%S %p"), abhijit_end.strftime("%I:%M:%S %p")], "description": _desc_abhijit(abhijit_start.strftime("%I:%M %p"), abhijit_end.strftime("%I:%M %p"))},
+                {"brahma":  [brahma_start.strftime("%I:%M:%S %p"),  brahma_end.strftime("%I:%M:%S %p")],  "description": _desc_brahma(brahma_start.strftime("%I:%M %p"),   brahma_end.strftime("%I:%M %p"))},
             ],
             "asubh_muhurat": [
-                {"rahu":     [rahu_start.strftime("%I:%M:%S %p"),      rahu_end.strftime("%I:%M:%S %p")]},
-                {"gulika":   [gulika_start.strftime("%I:%M:%S %p"),    gulika_end.strftime("%I:%M:%S %p")]},
-                {"yamaganda":[yamaganda_start.strftime("%I:%M:%S %p"), yamaganda_end.strftime("%I:%M:%S %p")]},
+                {"rahu":      [rahu_start.strftime("%I:%M:%S %p"),      rahu_end.strftime("%I:%M:%S %p")],      "description": _desc_rahu(rahu_start.strftime("%I:%M %p"),           rahu_end.strftime("%I:%M %p"),      now_local.strftime("%A"))},
+                {"gulika":    [gulika_start.strftime("%I:%M:%S %p"),    gulika_end.strftime("%I:%M:%S %p")],    "description": _desc_gulika(gulika_start.strftime("%I:%M %p"),       gulika_end.strftime("%I:%M %p"),    now_local.strftime("%A"))},
+                {"yamaganda": [yamaganda_start.strftime("%I:%M:%S %p"), yamaganda_end.strftime("%I:%M:%S %p")], "description": _desc_yamaganda(yamaganda_start.strftime("%I:%M %p"), yamaganda_end.strftime("%I:%M %p"), now_local.strftime("%A"))},
             ],
             "choghadiya":    choghadiya,
             "durmuhurta":    durmuhurta,
