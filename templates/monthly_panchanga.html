@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monthly Panchanga</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            padding: 30px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .input-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .input-group {
+            display: flex;
+            flex-direction: column;
+        }
+        label {
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #555;
+        }
+        input, select {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        button {
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+            grid-column: 1 / -1;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #667eea;
+            font-weight: 600;
+        }
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #c33;
+        }
+        .table-container {
+            overflow-x: auto;
+            margin-top: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            font-size: 13px;
+        }
+        thead {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            position: sticky;
+            top: 0;
+        }
+        th {
+            padding: 12px 8px;
+            text-align: left;
+            font-weight: 600;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        td {
+            padding: 10px 8px;
+            border: 1px solid #ddd;
+        }
+        tbody tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        tbody tr:hover {
+            background: #e9ecef;
+        }
+        .festival {
+            color: #d63384;
+            font-weight: 600;
+        }
+        .vrata {
+            color: #0d6efd;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📅 Monthly Panchanga</h1>
+        
+        <div class="input-section">
+            <div class="input-group">
+                <label for="latitude">Latitude</label>
+                <input type="number" id="latitude" step="any" placeholder="e.g., 27.7172" value="27.7172">
+            </div>
+            <div class="input-group">
+                <label for="longitude">Longitude</label>
+                <input type="number" id="longitude" step="any" placeholder="e.g., 85.3240" value="85.3240">
+            </div>
+            <div class="input-group">
+                <label for="month">Month</label>
+                <select id="month">
+                    <option value="1">January</option>
+                    <option value="2">February</option>
+                    <option value="3">March</option>
+                    <option value="4">April</option>
+                    <option value="5">May</option>
+                    <option value="6">June</option>
+                    <option value="7">July</option>
+                    <option value="8">August</option>
+                    <option value="9">September</option>
+                    <option value="10">October</option>
+                    <option value="11">November</option>
+                    <option value="12">December</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label for="year">Year</label>
+                <input type="number" id="year" min="1900" max="2100" value="2026">
+            </div>
+            <div class="input-group">
+                <label for="month-system">Lunar Month System</label>
+                <select id="month-system">
+                    <option value="purnimanta">Purnimanta</option>
+                    <option value="amanta">Amanta</option>
+                    <option value="both">Both (Show all)</option>
+                </select>
+            </div>
+            <button onclick="fetchPanchanga()">Get Monthly Panchanga</button>
+        </div>
+        
+        <div id="error-message"></div>
+        <div id="loading" class="loading" style="display: none;">Loading Panchanga data...</div>
+        
+        <div id="table-container" class="table-container" style="display: none;"></div>
+    </div>
+    
+    <script>
+        // Set current month
+        document.getElementById('month').value = new Date().getMonth() + 1;
+        document.getElementById('year').value = new Date().getFullYear();
+        
+        async function fetchPanchanga() {
+            const latitude = parseFloat(document.getElementById('latitude').value);
+            const longitude = parseFloat(document.getElementById('longitude').value);
+            const month = parseInt(document.getElementById('month').value);
+            const year = parseInt(document.getElementById('year').value);
+            const monthSystem = document.getElementById('month-system').value;
+            
+            // Validation
+            if (isNaN(latitude) || isNaN(longitude)) {
+                showError('Please enter valid latitude and longitude');
+                return;
+            }
+            
+            if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+                showError('Invalid coordinates. Latitude must be between -90 and 90, Longitude between -180 and 180');
+                return;
+            }
+            
+            // Show loading
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('error-message').innerHTML = '';
+            document.getElementById('table-container').style.display = 'none';
+            document.querySelector('button').disabled = true;
+            
+            try {
+                const response = await fetch('/monthly-panchanga', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        latitude: latitude,
+                        longitude: longitude,
+                        month: month,
+                        year: year,
+                        month_system: monthSystem
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to fetch Panchanga data');
+                }
+                
+                displayTable(data);
+            } catch (error) {
+                showError('Error: ' + error.message);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+                document.querySelector('button').disabled = false;
+            }
+        }
+        
+        function showError(message) {
+            document.getElementById('error-message').innerHTML = 
+                '<div class="error">' + message + '</div>';
+        }
+        
+        function displayTable(data) {
+            const container = document.getElementById('table-container');
+            let html = '<h2 style="margin-bottom: 15px;">Panchanga for ' + 
+                      getMonthName(data.month) + ' ' + data.year + '</h2>';
+            html += '<table><thead><tr>';
+            html += '<th>Date</th><th>Day</th><th>Tithi</th><th>Paksha</th><th>Nakshatra</th>';
+            html += '<th>Yoga</th><th>Karana</th><th>Moon Sign</th><th>Amanta Month</th><th>Purnimanta Month</th>';
+            html += '<th>Sunrise</th><th>Sunset</th><th>Festival</th><th>Vrata</th>';
+            html += '</tr></thead><tbody>';
+            
+            data.panchanga_data.forEach(day => {
+                if (day.error) {
+                    html += '<tr><td colspan="14" style="color: red;">Error: ' + day.error + '</td></tr>';
+                } else {
+                    html += '<tr>';
+                    html += '<td>' + day.date + '</td>';
+                    html += '<td>' + day.day_of_week + '</td>';
+                    html += '<td>' + day.tithi + ' (' + day.tithi_number + ')</td>';
+                    html += '<td>' + day.paksha + '</td>';
+                    html += '<td>' + day.nakshatra + '</td>';
+                    html += '<td>' + day.yoga + '</td>';
+                    html += '<td>' + day.karana + '</td>';
+                    html += '<td>' + day.moon_sign + '</td>';
+                    html += '<td>' + (day.amanta_month || '-') + '</td>';
+                    html += '<td>' + (day.purnimanta_month || '-') + '</td>';
+                    html += '<td>' + day.sunrise + '</td>';
+                    html += '<td>' + day.sunset + '</td>';
+                    html += '<td class="festival">' + (day.festival_today !== 'None' ? day.festival_today : '-') + '</td>';
+                    html += '<td class="vrata">' + (day.vrata_today !== 'None' ? day.vrata_today : '-') + '</td>';
+                    html += '</tr>';
+                }
+            });
+            
+            html += '</tbody></table>';
+            container.innerHTML = html;
+            container.style.display = 'block';
+        }
+        
+        function getMonthName(month) {
+            const months = ['January', 'February', 'March', 'April', 'May', 'June',
+                          'July', 'August', 'September', 'October', 'November', 'December'];
+            return months[month - 1];
+        }
+    </script>
+</body>
+</html>
