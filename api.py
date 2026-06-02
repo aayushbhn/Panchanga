@@ -934,6 +934,7 @@ def _p(name, pid, vid, reason):
         "id": pid,
         "variant_id": vid,
         "reason": reason,
+        "deity": details.get("deity", ""),
         "about": details.get("about", ""),
         "ritual_sequence": details.get("ritual_sequence", []),
     }
@@ -941,6 +942,7 @@ def _p(name, pid, vid, reason):
 
 POOJA_DETAILS = {
     "7468622348530": {  # Maha Shivaratri Pooja at Pashupatinath
+        "deity": "Lord Shiva",
         "about": "A sacred all-night vigil puja performed at Pashupatinath Temple on Maha Shivaratri, one of the most auspicious nights of the year. Lord Shiva is worshipped in his Pashupati form with Rudrabhishek, bilva archana, and Shiva stotrams chanted through four praharas (night watches).",
         "ritual_sequence": [
             "Sankalpa (declaration of intent) before sunset",
@@ -952,6 +954,7 @@ POOJA_DETAILS = {
         ],
     },
     "9035889672434": {  # Masik Shivaratri Pooja at Pashupatinath
+        "deity": "Lord Shiva",
         "about": "Monthly Shivaratri (Masik Shivaratri) puja observed on Krishna Paksha Chaturdashi each month at Pashupatinath. A smaller yet significant Shiva worship for regular devotees seeking blessings for health, peace, and removal of obstacles.",
         "ritual_sequence": [
             "Evening bath and clean white or grey clothes",
@@ -963,6 +966,7 @@ POOJA_DETAILS = {
         ],
     },
     "7465529606386": {  # Karya Siddhi Ganesh Pooja
+        "deity": "Lord Ganesha",
         "about": "Dedicated to Lord Ganesha, the remover of obstacles, this puja is performed on Chaturthi tithis for success in new endeavors, clearing blockages, and obtaining Ganesha's blessings before starting any important work or journey.",
         "ritual_sequence": [
             "Place Ganesha idol or image facing east",
@@ -974,6 +978,7 @@ POOJA_DETAILS = {
         ],
     },
     "8820054950130": {  # Lakshmi Kuber Pooja
+        "deity": "Goddess Lakshmi & Lord Kubera",
         "about": "A prosperity puja combining worship of Goddess Lakshmi (abundance, wealth) and Lord Kubera (treasury, material success). Performed on auspicious tithis like Purnima, Dhanteras, and Trayodashi to attract financial stability and remove wealth blockages.",
         "ritual_sequence": [
             "Clean altar and place Lakshmi and Kubera yantras or idols",
@@ -985,6 +990,7 @@ POOJA_DETAILS = {
         ],
     },
     "7465532653810": {  # Rudra Abishek Pooja
+        "deity": "Lord Shiva",
         "about": "Rudrabhishek is a powerful Shiva puja where the Shivalinga is bathed with Panchamrita (milk, curd, ghee, honey, sugar) and sacred substances while Shri Rudram is chanted. It is especially performed on Krishna Pradosh for removing planetary afflictions and bringing peace.",
         "ritual_sequence": [
             "Purify the Shivalinga with clean water",
@@ -996,6 +1002,7 @@ POOJA_DETAILS = {
         ],
     },
     "7465524363506": {  # Laxmi Narayan Pooja
+        "deity": "Lord Vishnu & Goddess Lakshmi",
         "about": "A joint worship of Lord Vishnu and Goddess Lakshmi performed on Ekadashi, Purnima, and Trayodashi. It invokes divine grace for prosperity, domestic harmony, and spiritual merit. Especially significant on Ekadashi for Vishnu bhaktas.",
         "ritual_sequence": [
             "Fast or eat only sattvic food from the previous day",
@@ -1007,6 +1014,7 @@ POOJA_DETAILS = {
         ],
     },
     "8817900945650": {  # Shri Durga Saptshati Chandi Path
+        "deity": "Goddess Durga",
         "about": "Chandi Path (Durga Saptashati) is a 700-verse recitation from Markandeya Purana glorifying Goddess Durga's victories over evil. It is recited during Navaratri and Navami for protection, victory over adversaries, and divine feminine grace.",
         "ritual_sequence": [
             "Take morning bath and wear clean red or white clothes",
@@ -1018,6 +1026,7 @@ POOJA_DETAILS = {
         ],
     },
     "8955542700274": {  # Kaal Bhairav and Shakti Maha Puja
+        "deity": "Lord Kaal Bhairav & Shakti",
         "about": "A tantric puja to Lord Kaal Bhairav (fierce form of Shiva) and Shakti performed on Krishna Ashtami. It is believed to protect from enemies, negative energies, and fear, and to strengthen the mind against obstacles and delays.",
         "ritual_sequence": [
             "Perform puja in the evening or night hours",
