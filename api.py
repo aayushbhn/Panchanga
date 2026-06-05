@@ -1037,6 +1037,19 @@ POOJA_DETAILS = {
             "Take protection sankalpa and seek removal of fear and obstacles",
         ],
     },
+    "7465527705842": {  # Navagraha Shanti Pooja with Hawan
+        "deity": "Navagraha (The Nine Planets)",
+        "about": "Navagraha Shanti is a comprehensive puja and hawan (fire ritual) performed to pacify and balance the energies of all nine planets — Surya, Chandra, Mangal, Budh, Guru, Shukra, Shani, Rahu, and Ketu. It is especially recommended on birthdays and during challenging planetary periods (dashas) or doshas, to harmonize planetary influences, remove obstacles, and invite health, prosperity, and peace for the year ahead.",
+        "ritual_sequence": [
+            "Sankalpa (declaration of intent) for planetary peace and well-being",
+            "Invocation (avahana) of all nine Grahas with their bija mantras",
+            "Navagraha homa (hawan) with the prescribed samidha and dravya for each planet",
+            "Recitation of the Navagraha Stotram and individual graha mantras",
+            "Offering of nine grains, cloths, and colours associated with each planet",
+            "Purnahuti (final offering) and aarti seeking the blessings of all Grahas",
+            "Distribution of prasad and tying of a protective thread",
+        ],
+    },
 }
 
 def get_poojas_for_day(tithi_number, paksha, amanta_month, day_of_week, festival_list):
@@ -1120,6 +1133,227 @@ def get_poojas_for_day(tithi_number, paksha, amanta_month, day_of_week, festival
                          "Krishna Paksha Ashtami"))
 
     return poojas if poojas else [{"name": "None", "id": None, "variant_id": None, "reason": None}]
+
+
+# ============================================================
+# KUNDLI-BASED POOJA RECOMMENDATIONS
+# Driven by the birth chart (dasha lords + doshas) and the birthday,
+# independent of the calendar-based poojas in get_poojas_for_day().
+# ============================================================
+
+# TODO: replace the Navagraha variant id below with the real Shopify variant id
+# (only the product id 7465527705842 was provided).
+_NAVAGRAHA_VARIANT_ID = "42114175566066"
+
+# pooja_key -> (display name, product_id, variant_id) — reuses the existing catalog.
+_KUNDALI_POOJA_CATALOG = {
+    "laxmi_narayan":       ("Laxmi Narayan Pooja",                "7465524363506", "42114162000114"),
+    "rudra_abishek":       ("Rudra Abishek Pooja",                "7465532653810", "42114187985138"),
+    "kaal_bhairav":        ("Kaal Bhairav and Shakti Maha Puja",  "8955542700274", "48729126895858"),
+    "lakshmi_kuber":       ("Lakshmi Kuber Pooja",                "8820054950130", "47901573153010"),
+    "karya_siddhi_ganesh": ("Karya Siddhi Ganesh Pooja",          "7465529606386", "42114181464306"),
+    "navagraha_shanti":    ("Navagraha Shanti Pooja with Hawan",  "7465527705842", "42114175566066"),
+}
+
+# Natal/transit planet (canonical English) -> remedial pooja from the catalog.
+PLANET_TO_POOJA = {
+    "Sun":     "laxmi_narayan",
+    "Moon":    "rudra_abishek",
+    "Mars":    "kaal_bhairav",
+    "Mercury": "laxmi_narayan",
+    "Jupiter": "laxmi_narayan",
+    "Venus":   "lakshmi_kuber",
+    "Saturn":  "rudra_abishek",
+    "Rahu":    "kaal_bhairav",
+    "Ketu":    "karya_siddhi_ganesh",
+}
+
+# Sanskrit/English planet name variants -> canonical English name.
+_PLANET_ALIASES = {
+    "sun": "Sun", "surya": "Sun", "ravi": "Sun",
+    "moon": "Moon", "chandra": "Moon", "soma": "Moon",
+    "mars": "Mars", "mangal": "Mars", "mangala": "Mars", "kuja": "Mars", "angaraka": "Mars",
+    "mercury": "Mercury", "budh": "Mercury", "budha": "Mercury",
+    "jupiter": "Jupiter", "guru": "Jupiter", "brihaspati": "Jupiter", "brhaspati": "Jupiter",
+    "venus": "Venus", "shukra": "Venus", "sukra": "Venus",
+    "saturn": "Saturn", "shani": "Saturn", "sani": "Saturn",
+    "rahu": "Rahu",
+    "ketu": "Ketu",
+}
+
+
+def _normalize_planet(name):
+    if not name:
+        return None
+    key = str(name).strip().lower()
+    if key in _PLANET_ALIASES:
+        return _PLANET_ALIASES[key]
+    for alias, canon in _PLANET_ALIASES.items():
+        if alias in key:
+            return canon
+    return None
+
+
+def _is_birthday(dob_str, today_str):
+    """True if today (YYYY-MM-DD) matches the birth month/day. Feb-29 births fall on
+    Feb 29 in leap years, else Mar 1."""
+    if not dob_str or not today_str:
+        return False
+    try:
+        dob = datetime.strptime(str(dob_str)[:10], "%Y-%m-%d").date()
+        today = datetime.strptime(str(today_str)[:10], "%Y-%m-%d").date()
+    except Exception:
+        return False
+    if dob.month == 2 and dob.day == 29:
+        if today.month == 2 and today.day == 29:
+            return True
+        import calendar
+        return today.month == 3 and today.day == 1 and not calendar.isleap(today.year)
+    return dob.month == today.month and dob.day == today.day
+
+
+def _truthy_dosha(value):
+    """Best-effort: does this value indicate a dosha is PRESENT? (schema unknown)."""
+    if value is None or value is False:
+        return False
+    if value is True:
+        return True
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() not in ("", "no", "false", "none", "absent", "not present", "nil", "0")
+    if isinstance(value, dict):
+        for flag in ("present", "is_present", "has_dosha", "exists", "applicable", "status"):
+            if flag in value:
+                return _truthy_dosha(value.get(flag))
+        return bool(value)
+    if isinstance(value, list):
+        return any(_truthy_dosha(v) for v in value)
+    return bool(value)
+
+
+def _is_negated(text):
+    """True if a free-text dosha label is phrased as absent (e.g. 'No Manglik')."""
+    t = " " + str(text).strip().lower() + " "
+    return any(tok in t for tok in (" no ", " not ", " none ", " absent", " nil ", " n/a ", " false ", " without "))
+
+
+def _detect_doshas(kundali_result):
+    """Best-effort dosha detection against an unknown report schema.
+    Returns list of (label, pooja_key). Safe (returns []) if nothing matches."""
+    if not isinstance(kundali_result, dict):
+        return []
+    found, seen = [], set()
+
+    def record(label, pooja_key):
+        if label not in seen:
+            seen.add(label)
+            found.append((label, pooja_key))
+
+    # 1) explicit named flag keys
+    key_rules = [
+        (("manglik", "is_manglik", "mangal_dosha", "mangal_dosh", "kuja_dosha", "angarak_dosha"),
+         "Manglik (Mangal) dosha", "kaal_bhairav"),
+        (("sade_sati", "shani_sade_sati", "sadhe_sati", "shani_dosha", "saturn_dosha"),
+         "Shani Sade Sati / Shani dosha", "rudra_abishek"),
+        (("kaal_sarp_dosha", "kaalsarp", "kaal_sarp", "kal_sarp", "kala_sarpa_dosha"),
+         "Kaal Sarp dosha", "navagraha_shanti"),
+    ]
+    for keys, label, pooja_key in key_rules:
+        for k in keys:
+            if k in kundali_result and _truthy_dosha(kundali_result.get(k)):
+                record(label, pooja_key)
+                break
+
+    # 2) a general "doshas" collection (list or dict) scanned by name
+    name_rules = [
+        (("manglik", "mangal", "kuja", "angarak"), "Manglik (Mangal) dosha", "kaal_bhairav"),
+        (("sade sati", "sadhe sati", "sade-sati", "shani", "saturn"), "Shani Sade Sati / Shani dosha", "rudra_abishek"),
+        (("kaal sarp", "kaalsarp", "kal sarp", "kaal sarpa", "kala sarpa"), "Kaal Sarp dosha", "navagraha_shanti"),
+    ]
+    container = kundali_result.get("doshas")
+    items = []
+    if isinstance(container, list):
+        items = container
+    elif isinstance(container, dict):
+        items = [name for name, val in container.items() if _truthy_dosha(val)]
+    for it in items:
+        if isinstance(it, str):
+            text = it
+        elif isinstance(it, dict):
+            if any(f in it for f in ("present", "is_present", "has_dosha", "exists", "applicable", "status")) \
+                    and not _truthy_dosha(it):
+                continue
+            text = " ".join(str(it.get(k, "")) for k in ("name", "type", "dosha", "title"))
+        else:
+            continue
+        if _is_negated(text):
+            continue
+        tl = text.lower()
+        for subs, label, pooja_key in name_rules:
+            if any(s in tl for s in subs):
+                record(label, pooja_key)
+    return found
+
+
+def get_kundali_pooja_recommendations(kundali_result, birth_details, day_data):
+    """Recommend poojas from the birth chart (dasha lords + doshas) and the birthday.
+    Independent of the calendar-based upcoming_poojas. Returns a self-describing dict."""
+    recs = {}  # product_id -> entry
+
+    def add(pooja_key, reason, priority):
+        name, pid, vid = _KUNDALI_POOJA_CATALOG[pooja_key]
+        if pid in recs:
+            if reason not in recs[pid]["_reasons"]:
+                recs[pid]["_reasons"].append(reason)
+            recs[pid]["_priority"] = min(recs[pid]["_priority"], priority)
+            return
+        entry = _p(name, pid, vid, reason)
+        entry["_reasons"] = [reason]
+        entry["_priority"] = priority
+        recs[pid] = entry
+
+    birth_details = birth_details or {}
+    dob = str(birth_details.get("date_of_birth") or "").strip()
+    today = str((day_data or {}).get("date") or "").strip()
+    is_birthday = _is_birthday(dob, today)
+
+    if is_birthday:
+        add("navagraha_shanti",
+            "Birthday — Navagraha Shanti Pooja to balance all nine planets and bless the year ahead.", 0)
+
+    for label, pooja_key in _detect_doshas(kundali_result):
+        add(pooja_key, f"{label} — remedial pooja.", 1)
+
+    if isinstance(kundali_result, dict):
+        maha = _normalize_planet((kundali_result.get("current_mahadasha") or {}).get("name"))
+        antar = _normalize_planet((kundali_result.get("current_antardasha") or {}).get("name"))
+        if maha and maha in PLANET_TO_POOJA:
+            add(PLANET_TO_POOJA[maha],
+                f"Current Mahadasha lord ({maha}) — strengthen and pacify its influence.", 2)
+        if antar and antar in PLANET_TO_POOJA and antar != maha:
+            add(PLANET_TO_POOJA[antar],
+                f"Current Antardasha lord ({antar}) — support the running sub-period.", 3)
+
+    ordered = sorted(recs.values(), key=lambda e: (e["_priority"], e["name"]))
+    for e in ordered:
+        e["reason"] = " ".join(e.pop("_reasons"))
+        e.pop("_priority", None)
+
+    if not dob and not isinstance(kundali_result, dict):
+        status = "no_birth_details"
+    elif not ordered:
+        status = "no_recommendation"
+    else:
+        status = "ok"
+
+    return {
+        "status": status,
+        "is_birthday": is_birthday,
+        "recommendations": ordered,
+        "note": ("Recommendations are derived from your birth chart (current dasha lords, doshas) "
+                 "and birthday. They are independent of the calendar-based upcoming poojas."),
+    }
 
 
 # ============================================================
@@ -1304,6 +1538,10 @@ EVENT_DEITY_MAP = {
     "vasant panchami": {"name": "Goddess Saraswati",         "description": "Vasant Panchami is dedicated to Goddess Saraswati, the deity of knowledge, arts, and wisdom. Students and creators seek her blessings for learning, eloquence, and creativity."},
     "raksha bandhan": {"name": "Lord Vishnu / Indra Deva",   "description": "Raksha Bandhan invokes divine protection through the sacred thread. It is associated with Lord Vishnu's protection and the strength of the sibling bond."},
     "akshaya tritiya": {"name": "Lord Vishnu / Lakshmi",     "description": "Akshaya Tritiya is one of the most auspicious days of the year, sacred to Vishnu and Lakshmi. 'Akshaya' means imperishable — any virtuous act done today yields unending merit."},
+    "kalashtami":    {"name": "Lord Kala Bhairava",          "description": "Kalashtami, the Ashtami of Krishna Paksha, is dedicated to Lord Kala Bhairava, the fierce protective form of Shiva. Worship invokes his protection, courage, and the removal of fear and hidden obstacles."},
+    "durga ashtami": {"name": "Goddess Durga",               "description": "Durga Ashtami honors Goddess Durga in her warrior Shakti form. Worship on this day invokes strength, protection, and victory over inner and outer obstacles."},
+    "radha ashtami": {"name": "Radha Rani",                  "description": "Radha Ashtami celebrates the birth of Radha Rani, the beloved of Lord Krishna and embodiment of pure devotion. Worship deepens bhakti, love, and grace."},
+    "ashtami":       {"name": "Goddess Durga / Lord Bhairava","description": "Ashtami, the 8th tithi, carries Shakti energy — Shukla Ashtami is sacred to Goddess Durga, while Krishna Ashtami (Kalashtami) honors Lord Bhairava. The day supports strength, protection, and courage."},
 }
 
 
@@ -1979,8 +2217,7 @@ def _precompute_month_events_and_poojas(lat_r, lon_r, tz_name, year, month, mont
         festivals    = (fixed + lunar) or ["None"]
         vratas_list  = vratas or ["None"]
         clean_f  = _clean_event_list(festivals)
-        clean_v  = [v for v in _clean_event_list(vratas_list)
-                    if "ekadashi" in v.lower() or "pradosh" in v.lower()]
+        clean_v  = [v for v in _clean_event_list(vratas_list) if _is_significant_vrata(v)]
         event_titles = clean_f + clean_v
         if event_titles:
             event_title = event_titles[0]
@@ -2068,6 +2305,18 @@ def _clean_event_list(values):
     return [v for v in (values or []) if v and v != "None"]
 
 
+# Tithis significant enough to surface in Upcoming Spiritual Events even without a
+# named festival on that day. Matched as case-insensitive substrings against vrata names
+# (e.g. "Kalashtami (Monthly)" -> ashtami, "Sankashti Chaturthi (Monthly)" -> chaturthi,
+# "Purnima Vrat (Monthly)" -> purnima, "Amavasya Vrat (Monthly)" -> amavasya).
+SIGNIFICANT_VRATA_KEYWORDS = ("ekadashi", "pradosh", "ashtami", "chaturthi", "purnima", "amavasya")
+
+
+def _is_significant_vrata(name):
+    n = (name or "").lower()
+    return any(k in n for k in SIGNIFICANT_VRATA_KEYWORDS)
+
+
 def _event_guidance(event_name, paksha):
     e = (event_name or "").lower()
     if "ekadashi" in e:
@@ -2098,6 +2347,36 @@ def _event_guidance(event_name, paksha):
             "avoid_practices": [
                 "Anger, harsh speech, and rushing through evening worship.",
                 "Starting avoidable confrontational tasks during twilight."
+            ],
+        }
+    if "ashtami" in e and "janma" not in e:
+        if paksha == "Krishna Paksha":
+            return {
+                "description": "Kalashtami falls on the Ashtami (8th tithi) of Krishna Paksha each month and is dedicated to Lord Kala Bhairava, the fierce protective form of Lord Shiva. It is observed for courage, protection from negative forces, and the removal of fear and hidden obstacles.",
+                "why_it_matters": "Krishna Ashtami (Kalashtami) invokes Bhairava's protection — clearing fear, negativity, and hidden obstacles.",
+                "who_should_use_it": "Those seeking protection, courage, or relief from persistent fear and obstacles.",
+                "recommended_practices": [
+                    "Light a mustard-oil or sesame-oil lamp before Bhairava in the evening.",
+                    "Chant the Bhairava or Shiva mantra and offer black sesame.",
+                    "Keep food light and observe a calm, disciplined day.",
+                ],
+                "avoid_practices": [
+                    "Anger, harsh speech, and reckless risk-taking.",
+                    "Non-vegetarian food and intoxicants.",
+                ],
+            }
+        return {
+            "description": "Shukla Ashtami (the 8th tithi of the waxing fortnight) is sacred to Goddess Durga in her Shakti form, observed as Masik Durga Ashtami. It is a day for invoking strength, protection, and victory over inner and outer obstacles.",
+            "why_it_matters": "Shukla Ashtami channels Durga's Shakti for strength, protection, and resolve.",
+            "who_should_use_it": "Devotees seeking courage, protection, and spiritual strength.",
+            "recommended_practices": [
+                "Offer red flowers, kumkum, and incense to Goddess Durga.",
+                "Recite Durga Chalisa or a Devi stotram.",
+                "Observe a light sattvic fast if health permits.",
+            ],
+            "avoid_practices": [
+                "Tamasic food, alcohol, and conflict.",
+                "Negative or harsh speech.",
             ],
         }
     if "sankashti" in e or "chaturthi" in e:
@@ -2180,11 +2459,13 @@ def _spiritual_event_priority(row):
         return 0
     if "pradosh" in text:
         return 1
-    if row.get("all_events"):
+    if "ashtami" in text:
         return 2
-    if "festival" in text or "jayanti" in text or "purnima" in text:
+    if row.get("all_events"):
         return 3
-    return 4
+    if "festival" in text or "jayanti" in text or "purnima" in text:
+        return 4
+    return 5
 
 
 def get_upcoming_spiritual_events(lat_r, lon_r, tz_name, from_date, days_ahead=7, month_system="both"):
@@ -2214,7 +2495,7 @@ def get_upcoming_spiritual_events(lat_r, lon_r, tz_name, from_date, days_ahead=7
         poojas = get_poojas_for_day(tithi_number, paksha, amanta_month, day_of_week, fixed + lunar)
 
         clean_festivals = _clean_event_list(festivals)
-        clean_vratas = [v for v in _clean_event_list(vratas) if ("ekadashi" in v.lower() or "pradosh" in v.lower())]
+        clean_vratas = [v for v in _clean_event_list(vratas) if _is_significant_vrata(v)]
         event_titles = clean_festivals + clean_vratas
         if not event_titles:
             continue
@@ -3112,6 +3393,9 @@ def build_app_response(day_data, upcoming_spiritual_events, rashi=None, person_n
             day_data.get("date"),
             min_day=3,
             max_day=7,
+        ),
+        "personalized_pooja_recommendations": get_kundali_pooja_recommendations(
+            kundali_result, birth_details, day_data
         ),
         "personalized_planetary_transits": personalized_transits,
         "today_horoscope": real_today_horoscope,
