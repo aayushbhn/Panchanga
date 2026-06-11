@@ -5,6 +5,7 @@ from functools import lru_cache
 from bisect import bisect_right
 from concurrent.futures import ThreadPoolExecutor
 import threading
+import copy
 import hashlib
 import json
 import numpy as np
@@ -84,6 +85,34 @@ def _response_cache_put(key, value):
         if len(_RESPONSE_CACHE) >= _RESPONSE_CACHE_MAX:
             _RESPONSE_CACHE.clear()
         _RESPONSE_CACHE[key] = value
+
+
+# ------------------------------------------------------------
+# Scan cache (date-deterministic 7-day look-aheads)
+# ------------------------------------------------------------
+# get_upcoming_spiritual_events / get_upcoming_poojas scan future days using a
+# noon anchor per date, so their result depends only on (location, from_date,
+# window, month_system, UTC day) — NOT on the current instant. This lets the
+# *live* /astrology endpoint reuse the heavy 7-day scan across same-day requests
+# for a location, even though /astrology itself is not response-cached. Output is
+# unchanged; the UTC-day component refreshes daily (matching the per-day mantra
+# data embedded by calculate_panchanga_for_date).
+_SCAN_CACHE = {}
+_SCAN_CACHE_LOCK = threading.Lock()
+_SCAN_CACHE_MAX = 4096
+
+
+def _scan_cache_get_or_compute(key, compute):
+    with _SCAN_CACHE_LOCK:
+        cached = _SCAN_CACHE.get(key)
+    if cached is not None:
+        return cached
+    value = compute()
+    with _SCAN_CACHE_LOCK:
+        if len(_SCAN_CACHE) >= _SCAN_CACHE_MAX:
+            _SCAN_CACHE.clear()
+        _SCAN_CACHE[key] = value
+    return value
 
 def _lahiri_ayanamsa(jd: float) -> float:
     """Lahiri (Chitrapaksha) ayanamsa in degrees for a given Julian Date."""
@@ -2166,7 +2195,18 @@ def compute_month_anga_end_times_batch(year, month, tz_name):
 
 
 def get_upcoming_poojas(lat_r, lon_r, tz_name, from_date, days_ahead=7, month_system="both"):
-    """Returns poojas for next days_ahead days after from_date."""
+    """Returns poojas for next days_ahead days after from_date.
+    Result is date-deterministic, so it is memoized per (location, from_date,
+    window, month_system, UTC day) — see _scan_cache_get_or_compute."""
+    key = ("poojas", lat_r, lon_r, tz_name, from_date.isoformat(), days_ahead, month_system,
+           datetime.now(pytz.utc).strftime("%Y-%m-%d"))
+    return _scan_cache_get_or_compute(
+        key,
+        lambda: _get_upcoming_poojas_uncached(lat_r, lon_r, tz_name, from_date, days_ahead, month_system),
+    )
+
+
+def _get_upcoming_poojas_uncached(lat_r, lon_r, tz_name, from_date, days_ahead=7, month_system="both"):
     tz = pytz.timezone(tz_name)
     result = []
     for offset in range(1, days_ahead + 1):
@@ -2527,7 +2567,18 @@ def _spiritual_event_priority(row):
 
 
 def get_upcoming_spiritual_events(lat_r, lon_r, tz_name, from_date, days_ahead=7, month_system="both"):
-    """Return festival/vrata-rich upcoming spiritual events for app use."""
+    """Return festival/vrata-rich upcoming spiritual events for app use.
+    Date-deterministic, so memoized per (location, from_date, window,
+    month_system, UTC day) — this is the bulk of /astrology's compute."""
+    key = ("events", lat_r, lon_r, tz_name, from_date.isoformat(), days_ahead, month_system,
+           datetime.now(pytz.utc).strftime("%Y-%m-%d"))
+    return _scan_cache_get_or_compute(
+        key,
+        lambda: _get_upcoming_spiritual_events_uncached(lat_r, lon_r, tz_name, from_date, days_ahead, month_system),
+    )
+
+
+def _get_upcoming_spiritual_events_uncached(lat_r, lon_r, tz_name, from_date, days_ahead=7, month_system="both"):
     tz = pytz.timezone(tz_name)
     result = []
     for offset in range(1, days_ahead + 1):
@@ -3566,6 +3617,29 @@ def order_day_payload(d):
 # 13) DAILY PANCHANGA (for monthly endpoint)
 # ============================================================
 def calculate_panchanga_for_date(latitude, longitude, target_date_naive, tz_name, month_system="both", precomputed_end_times=None):
+    """The panchanga core is deterministic per (location, date, month_system, UTC
+    day) and does NOT depend on birth details — so memoize it. This lets
+    *personalized* requests (which bypass the full-response cache) still reuse the
+    heavy Skyfield compute, even across different users hitting the same
+    date/location. A deepcopy is returned so callers can never mutate the cached
+    object. Only the precomputed_end_times=None path is cached, so the monthly
+    endpoint's batch-end-times path is untouched (avoids mixing the two)."""
+    if precomputed_end_times is not None:
+        return _calculate_panchanga_for_date_uncached(
+            latitude, longitude, target_date_naive, tz_name, month_system, precomputed_end_times
+        )
+    key = ("panchanga", round_coord(latitude), round_coord(longitude), target_date_naive.strftime("%Y-%m-%d"),
+           tz_name, month_system, datetime.now(pytz.utc).strftime("%Y-%m-%d"))
+    cached = _scan_cache_get_or_compute(
+        key,
+        lambda: _calculate_panchanga_for_date_uncached(
+            latitude, longitude, target_date_naive, tz_name, month_system, None
+        ),
+    )
+    return copy.deepcopy(cached)
+
+
+def _calculate_panchanga_for_date_uncached(latitude, longitude, target_date_naive, tz_name, month_system="both", precomputed_end_times=None):
     lat_r = round_coord(latitude)
     lon_r = round_coord(longitude)
 
