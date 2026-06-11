@@ -2985,12 +2985,18 @@ TRANSIT_POOJA_PRACTICES = {
 
 
 def _compute_sign_changes(graha_gochar: dict, base_jd: float) -> dict:
-    """Estimate days until each planet changes sign.
+    """Estimate days until each planet changes sign. The result is a pure function
+    of base_jd (positions come from get_all_planet_positions at base_jd and +7;
+    graha_gochar supplies only the always-identical planet key set), so it is
+    memoized per base_jd. This is ~30% of personalized monthly compute. A deepcopy
+    is returned so the read-only consumers can never corrupt the cache."""
+    cache_key = ("signchg", round(float(base_jd), 6))
+    return copy.deepcopy(_scan_cache_get_or_compute(
+        cache_key, lambda: _compute_sign_changes_uncached(graha_gochar, base_jd)
+    ))
 
-    Uses 7-day average motion computed from base_jd (noon) to base_jd+7 for accuracy.
-    Saturn is excluded — it retrogrades before its next sign change, making linear
-    extrapolation wildly inaccurate (can be off by 6+ months).
-    """
+
+def _compute_sign_changes_uncached(graha_gochar: dict, base_jd: float) -> dict:
     _SKIP = {"Saturn"}  # retrogrades before next ingress; linear extrapolation fails
     try:
         pos_today = get_all_planet_positions(TS.tt_jd(base_jd))
@@ -3621,19 +3627,19 @@ def calculate_panchanga_for_date(latitude, longitude, target_date_naive, tz_name
     day) and does NOT depend on birth details — so memoize it. This lets
     *personalized* requests (which bypass the full-response cache) still reuse the
     heavy Skyfield compute, even across different users hitting the same
-    date/location. A deepcopy is returned so callers can never mutate the cached
-    object. Only the precomputed_end_times=None path is cached, so the monthly
-    endpoint's batch-end-times path is untouched (avoids mixing the two)."""
-    if precomputed_end_times is not None:
-        return _calculate_panchanga_for_date_uncached(
-            latitude, longitude, target_date_naive, tz_name, month_system, precomputed_end_times
-        )
-    key = ("panchanga", round_coord(latitude), round_coord(longitude), target_date_naive.strftime("%Y-%m-%d"),
+    date/location, and lets repeated monthly requests reuse all 30 per-day
+    computes. A deepcopy is returned so callers can never mutate the cached
+    object."""
+    # Distinct prefix per end-time source so the /panchanga-date path (per-date
+    # compute_angas_end_times) and the monthly path (batch end times) never share
+    # a cache entry — each is internally consistent, output unchanged.
+    prefix = "panchanga_m" if precomputed_end_times is not None else "panchanga"
+    key = (prefix, round_coord(latitude), round_coord(longitude), target_date_naive.strftime("%Y-%m-%d"),
            tz_name, month_system, datetime.now(pytz.utc).strftime("%Y-%m-%d"))
     cached = _scan_cache_get_or_compute(
         key,
         lambda: _calculate_panchanga_for_date_uncached(
-            latitude, longitude, target_date_naive, tz_name, month_system, None
+            latitude, longitude, target_date_naive, tz_name, month_system, precomputed_end_times
         ),
     )
     return copy.deepcopy(cached)
