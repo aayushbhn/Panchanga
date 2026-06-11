@@ -3,10 +3,13 @@ from datetime import datetime, timedelta
 import pytz
 from functools import lru_cache
 from bisect import bisect_right
+from concurrent.futures import ThreadPoolExecutor
+import threading
 import hashlib
 import json
-from urllib import request as urlrequest
 import numpy as np
+import requests
+from requests.adapters import HTTPAdapter
 
 from skyfield.api import load, Topos
 from skyfield.almanac import (
@@ -26,6 +29,61 @@ app = Flask(__name__)
 TS = load.timescale()
 EPH = load("de421.bsp")
 TF = TimezoneFinder()
+
+# Shared thread pool used to overlap blocking external HTTP calls (kundali /
+# mantra reports) with the CPU-bound Skyfield computation. This only changes
+# *when* the network calls run — the data they return is unchanged.
+IO_EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix="panchanga-io")
+
+# Shared HTTP session with a connection pool so repeated calls to the kundali /
+# mantra hosts reuse a kept-alive TLS connection instead of paying a fresh
+# handshake (~200 ms) every request. Thread-safe for concurrent use by the
+# IO_EXECUTOR workers. No retries — preserves the single-attempt behavior of the
+# previous urllib code so failure handling is unchanged.
+HTTP_SESSION = requests.Session()
+_http_adapter = HTTPAdapter(pool_connections=16, pool_maxsize=16, max_retries=0)
+HTTP_SESSION.mount("https://", _http_adapter)
+HTTP_SESSION.mount("http://", _http_adapter)
+
+# ------------------------------------------------------------
+# Full-response cache (non-personalized requests only)
+# ------------------------------------------------------------
+# /panchanga-date and /monthly-panchanga compute at a fixed noon anchor, so for a
+# given (raw request params, UTC day) the response is fully deterministic — when
+# no birth details are supplied (no per-person kundali fetch). We cache the final
+# response dict keyed on the exact request body + UTC day, so identical repeat
+# requests skip the Skyfield compute entirely and return byte-identical JSON. The
+# UTC-day component expires entries daily (matching the per-day mantra data).
+_RESPONSE_CACHE = {}
+_RESPONSE_CACHE_LOCK = threading.Lock()
+_RESPONSE_CACHE_MAX = 512
+
+_BIRTH_DETAIL_KEYS = ("date_of_birth", "time_of_birth", "birth_latitude", "birth_longitude")
+
+
+def _request_has_birth_details(data):
+    return any((data or {}).get(k) not in (None, "") for k in _BIRTH_DETAIL_KEYS)
+
+
+def _response_cache_key(endpoint, data):
+    """Stable key from the endpoint + exact request body + current UTC day."""
+    return (
+        endpoint,
+        json.dumps(data, sort_keys=True, default=str),
+        datetime.now(pytz.utc).strftime("%Y-%m-%d"),
+    )
+
+
+def _response_cache_get(key):
+    with _RESPONSE_CACHE_LOCK:
+        return _RESPONSE_CACHE.get(key)
+
+
+def _response_cache_put(key, value):
+    with _RESPONSE_CACHE_LOCK:
+        if len(_RESPONSE_CACHE) >= _RESPONSE_CACHE_MAX:
+            _RESPONSE_CACHE.clear()
+        _RESPONSE_CACHE[key] = value
 
 def _lahiri_ayanamsa(jd: float) -> float:
     """Lahiri (Chitrapaksha) ayanamsa in degrees for a given Julian Date."""
@@ -596,9 +654,9 @@ MANTRA_API_URL = "https://nepa-app-uat.nepalirudraksha.com/api/v2/mantra/deities
 def _fetch_mantra_data_cached(_date_str: str):
     """Fetch mantra/deity data from the mantras API, cached once per calendar day.
     Raises on failure so lru_cache does not store the error result."""
-    req = urlrequest.Request(MANTRA_API_URL, headers={"Accept": "application/json"})
-    with urlrequest.urlopen(req, timeout=10) as resp:
-        return json.loads(resp.read().decode("utf-8")).get("data") or []
+    resp = HTTP_SESSION.get(MANTRA_API_URL, headers={"Accept": "application/json"}, timeout=10)
+    resp.raise_for_status()  # match urllib: non-2xx raises (so the error isn't cached)
+    return json.loads(resp.content.decode("utf-8")).get("data") or []
 
 
 def get_mantra_data():
@@ -3014,6 +3072,17 @@ def _extract_rashi_name(value):
     return _normalize_rashi(plain)
 
 
+# Process-local cache of successful kundali reports, keyed on the exact request
+# payload plus a UTC day stamp. The upstream report only changes day-to-day at
+# the resolution this API exposes (mahadasha/antardasha span months/years), so a
+# same-day cache returns identical data while avoiding a repeated blocking POST.
+# Only successful responses are cached, so transient failures still retry exactly
+# as before.
+_KUNDALI_CACHE = {}
+_KUNDALI_CACHE_LOCK = threading.Lock()
+_KUNDALI_CACHE_MAX = 2048
+
+
 def _fetch_kundali_report(birth_details, fallback_tz_name, person_name=None):
     required = ["date_of_birth", "time_of_birth", "birth_latitude", "birth_longitude"]
     if not birth_details or any(birth_details.get(k) in (None, "") for k in required):
@@ -3033,21 +3102,41 @@ def _fetch_kundali_report(birth_details, fallback_tz_name, person_name=None):
         "user_currency": str(birth_details.get("user_currency") or "INR"),
     }
 
+    # Cache key: full payload (sorted) + current UTC day → refreshes daily.
+    cache_key = (
+        tuple(sorted(payload.items())),
+        datetime.now(pytz.utc).strftime("%Y-%m-%d"),
+    )
+    with _KUNDALI_CACHE_LOCK:
+        cached = _KUNDALI_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
     try:
-        req = urlrequest.Request(
+        # data=<exact bytes> (not json=) so the request body is byte-identical to
+        # the previous urllib call; raise_for_status() mirrors urllib raising on
+        # non-2xx, keeping the kundali_api_error path unchanged.
+        response = HTTP_SESSION.post(
             KUNDALI_REPORT_URL,
             data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json"},
-            method="POST",
+            timeout=KUNDALI_TIMEOUT_SECONDS,
         )
-        with urlrequest.urlopen(req, timeout=KUNDALI_TIMEOUT_SECONDS) as response:
-            raw = response.read().decode("utf-8")
+        response.raise_for_status()
+        raw = response.content.decode("utf-8")
         parsed = json.loads(raw or "{}")
         if not parsed.get("ok") or not isinstance(parsed.get("result"), dict):
             return {"ok": False, "status": "kundali_api_failed", "result": None}
-        return {"ok": True, "status": "ok", "result": parsed.get("result")}
+        result = {"ok": True, "status": "ok", "result": parsed.get("result")}
     except Exception:
         return {"ok": False, "status": "kundali_api_error", "result": None}
+
+    # Cache successful results only (failures keep retrying as before).
+    with _KUNDALI_CACHE_LOCK:
+        if len(_KUNDALI_CACHE) >= _KUNDALI_CACHE_MAX:
+            _KUNDALI_CACHE.clear()
+        _KUNDALI_CACHE[cache_key] = result
+    return result
 
 
 def _build_natal_house_map(kundali_result):
@@ -3713,6 +3802,12 @@ def astrology_api_view():
         if timezone_str is None:
             return jsonify({"error": "Timezone could not be determined from the provided coordinates."}), 400
 
+        # Kick off the blocking kundali fetch now so it overlaps the Skyfield
+        # compute below; resolved at build_app_response time (data unchanged).
+        kundali_future = IO_EXECUTOR.submit(
+            _fetch_kundali_report, birth_details, timezone_str, person_name
+        )
+
         tz = pytz.timezone(timezone_str)
         now_local = datetime.now(tz)
         date_ymd = now_local.strftime("%Y-%m-%d")
@@ -3935,7 +4030,8 @@ def astrology_api_view():
             lat_r, lon_r, timezone_str, now_local.date(), days_ahead=7, month_system=month_system
         )
         app_response = build_app_response(
-            response_payload, upcoming_spiritual_events, requested_rashi, person_name, birth_details, timezone_str, upcoming_poojas
+            response_payload, upcoming_spiritual_events, requested_rashi, person_name, birth_details, timezone_str, upcoming_poojas,
+            precomputed_kundali_data=kundali_future.result(),
         )
         response_payload = order_day_payload(response_payload)
         response_payload["app_response"] = app_response
@@ -3978,12 +4074,27 @@ def monthly_panchanga_api():
         if not (1900 <= year <= 2100):
             return jsonify({"error": "Invalid year. Must be between 1900 and 2100."}), 400
 
+        # Non-personalized requests are deterministic for (request body, UTC day):
+        # serve an identical cached response and skip the full-month compute.
+        cacheable = not _request_has_birth_details(data)
+        cache_key = _response_cache_key("/monthly-panchanga", data) if cacheable else None
+        if cache_key is not None:
+            cached = _response_cache_get(cache_key)
+            if cached is not None:
+                return jsonify(cached)
+
         lat_r = round_coord(latitude)
         lon_r = round_coord(longitude)
 
         timezone_str = cached_timezone_str(lat_r, lon_r)
         if timezone_str is None:
             return jsonify({"error": "Timezone could not be determined from the provided coordinates."}), 400
+
+        # Fetch kundali once (birth data is static across all days) and let the
+        # blocking call overlap the cache pre-warm + batch compute below.
+        kundali_future = IO_EXECUTOR.submit(
+            _fetch_kundali_report, birth_details, timezone_str, person_name
+        )
 
         # Warm moon phase cache
         cached_moon_phases_for_month(year, month, timezone_str)
@@ -4005,8 +4116,8 @@ def monthly_panchanga_api():
         # Batch-compute all anga end times (4 find_discrete calls vs 30×4=120)
         batch_end_times = compute_month_anga_end_times_batch(year, month, timezone_str)
 
-        # Fetch kundali once — birth data is static across all days
-        precomputed_kundali = _fetch_kundali_report(birth_details, timezone_str, person_name)
+        # Resolve the kundali fetch started above (it ran during the warm-up).
+        precomputed_kundali = kundali_future.result()
 
         # Precompute spiritual events & poojas for the entire month + 7-day tail in one pass
         events_by_date, poojas_by_date = _precompute_month_events_and_poojas(
@@ -4053,7 +4164,7 @@ def monthly_panchanga_api():
             })
             monthly_data.append(order_day_payload(day_data))
 
-        return jsonify({
+        response_dict = {
             "month": month,
             "year": year,
             "latitude": latitude,
@@ -4062,7 +4173,10 @@ def monthly_panchanga_api():
             "total_days": num_days,
             "panchanga_data": monthly_data,
             "app_response": monthly_app_response,
-        })
+        }
+        if cache_key is not None:
+            _response_cache_put(cache_key, response_dict)
+        return jsonify(response_dict)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -4100,12 +4214,26 @@ def panchanga_date_api():
         except ValueError:
             return jsonify({"error": "Invalid date (e.g. day out of range for month)."}), 400
 
+        # Non-personalized requests are deterministic for (request body, UTC day):
+        # serve an identical cached response and skip the Skyfield compute.
+        cacheable = not _request_has_birth_details(data)
+        cache_key = _response_cache_key("/panchanga-date", data) if cacheable else None
+        if cache_key is not None:
+            cached = _response_cache_get(cache_key)
+            if cached is not None:
+                return jsonify(cached)
+
         lat_r = round_coord(latitude)
         lon_r = round_coord(longitude)
 
         timezone_str = cached_timezone_str(lat_r, lon_r)
         if timezone_str is None:
             return jsonify({"error": "Timezone could not be determined from the provided coordinates."}), 400
+
+        # Overlap the blocking kundali fetch with the Skyfield compute below.
+        kundali_future = IO_EXECUTOR.submit(
+            _fetch_kundali_report, birth_details, timezone_str, person_name
+        )
 
         panchanga_data = calculate_panchanga_for_date(
             latitude,
@@ -4124,24 +4252,54 @@ def panchanga_date_api():
             month_system=month_system
         )
         app_response = build_app_response(
-            panchanga_data, upcoming_spiritual_events, requested_rashi, person_name, birth_details, timezone_str, upcoming_poojas
+            panchanga_data, upcoming_spiritual_events, requested_rashi, person_name, birth_details, timezone_str, upcoming_poojas,
+            precomputed_kundali_data=kundali_future.result(),
         )
         panchanga_data = order_day_payload(panchanga_data)
 
-        return jsonify({
+        response_dict = {
             "latitude": latitude,
             "longitude": longitude,
             "timezone": timezone_str,
             "panchanga_data": panchanga_data,
             "upcoming_poojas": upcoming_poojas,
             "app_response": app_response,
-        })
+        }
+        if cache_key is not None:
+            _response_cache_put(cache_key, response_dict)
+        return jsonify(response_dict)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
 # ============================================================
-# 15) RUN
+# 15) STARTUP PREWARM
+# ============================================================
+def _prewarm():
+    """Warm caches on a fresh worker so the first request doesn't pay one-time
+    costs: the daily mantra fetch and Skyfield/NumPy lazy initialization.
+    Runs in the background at import so it never blocks worker startup or
+    serving. Failures are ignored — every path already degrades gracefully."""
+    try:
+        get_mantra_data()  # warms the per-day mantra lru_cache
+    except Exception:
+        pass
+    try:
+        # One throwaway compute warms Skyfield/NumPy lazy state and pages the
+        # ephemeris into memory. Kathmandu is a sensible default origin.
+        lat_r, lon_r = round_coord(27.7172), round_coord(85.3240)
+        tz_name = cached_timezone_str(lat_r, lon_r)
+        if tz_name:
+            calculate_panchanga_for_date(lat_r, lon_r, datetime.now(), tz_name)
+    except Exception:
+        pass
+
+
+# Kick off prewarm in the background at import (covers gunicorn workers too).
+IO_EXECUTOR.submit(_prewarm)
+
+# ============================================================
+# 16) RUN
 # ============================================================
 if __name__ == "__main__":
     app.run(debug=True,port=5001)
