@@ -26,4 +26,10 @@ COPY templates/ templates/
 ENV PORT=5000
 EXPOSE 5000
 
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT} --workers 2 --threads 4 --timeout 120 api:app"]
+# Workers/threads are env-tunable (defaults match prior behavior: 2 workers, 4
+# threads). Bump WEB_CONCURRENCY toward your vCPU count for more parallel
+# CPU-bound requests; threads help overlap the blocking kundali/mantra calls.
+# NOTE: do not add --preload — each worker imports independently so its own
+# background prewarm thread pool starts cleanly (ThreadPoolExecutor is not
+# fork-safe).
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT} --workers ${WEB_CONCURRENCY:-2} --threads ${GUNICORN_THREADS:-4} --timeout 120 api:app"]

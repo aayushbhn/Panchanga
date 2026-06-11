@@ -3,10 +3,13 @@ from datetime import datetime, timedelta
 import pytz
 from functools import lru_cache
 from bisect import bisect_right
+from concurrent.futures import ThreadPoolExecutor
+import threading
 import hashlib
 import json
-from urllib import request as urlrequest
 import numpy as np
+import requests
+from requests.adapters import HTTPAdapter
 
 from skyfield.api import load, Topos
 from skyfield.almanac import (
@@ -26,6 +29,61 @@ app = Flask(__name__)
 TS = load.timescale()
 EPH = load("de421.bsp")
 TF = TimezoneFinder()
+
+# Shared thread pool used to overlap blocking external HTTP calls (kundali /
+# mantra reports) with the CPU-bound Skyfield computation. This only changes
+# *when* the network calls run — the data they return is unchanged.
+IO_EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix="panchanga-io")
+
+# Shared HTTP session with a connection pool so repeated calls to the kundali /
+# mantra hosts reuse a kept-alive TLS connection instead of paying a fresh
+# handshake (~200 ms) every request. Thread-safe for concurrent use by the
+# IO_EXECUTOR workers. No retries — preserves the single-attempt behavior of the
+# previous urllib code so failure handling is unchanged.
+HTTP_SESSION = requests.Session()
+_http_adapter = HTTPAdapter(pool_connections=16, pool_maxsize=16, max_retries=0)
+HTTP_SESSION.mount("https://", _http_adapter)
+HTTP_SESSION.mount("http://", _http_adapter)
+
+# ------------------------------------------------------------
+# Full-response cache (non-personalized requests only)
+# ------------------------------------------------------------
+# /panchanga-date and /monthly-panchanga compute at a fixed noon anchor, so for a
+# given (raw request params, UTC day) the response is fully deterministic — when
+# no birth details are supplied (no per-person kundali fetch). We cache the final
+# response dict keyed on the exact request body + UTC day, so identical repeat
+# requests skip the Skyfield compute entirely and return byte-identical JSON. The
+# UTC-day component expires entries daily (matching the per-day mantra data).
+_RESPONSE_CACHE = {}
+_RESPONSE_CACHE_LOCK = threading.Lock()
+_RESPONSE_CACHE_MAX = 512
+
+_BIRTH_DETAIL_KEYS = ("date_of_birth", "time_of_birth", "birth_latitude", "birth_longitude")
+
+
+def _request_has_birth_details(data):
+    return any((data or {}).get(k) not in (None, "") for k in _BIRTH_DETAIL_KEYS)
+
+
+def _response_cache_key(endpoint, data):
+    """Stable key from the endpoint + exact request body + current UTC day."""
+    return (
+        endpoint,
+        json.dumps(data, sort_keys=True, default=str),
+        datetime.now(pytz.utc).strftime("%Y-%m-%d"),
+    )
+
+
+def _response_cache_get(key):
+    with _RESPONSE_CACHE_LOCK:
+        return _RESPONSE_CACHE.get(key)
+
+
+def _response_cache_put(key, value):
+    with _RESPONSE_CACHE_LOCK:
+        if len(_RESPONSE_CACHE) >= _RESPONSE_CACHE_MAX:
+            _RESPONSE_CACHE.clear()
+        _RESPONSE_CACHE[key] = value
 
 def _lahiri_ayanamsa(jd: float) -> float:
     """Lahiri (Chitrapaksha) ayanamsa in degrees for a given Julian Date."""
@@ -596,9 +654,9 @@ MANTRA_API_URL = "https://nepa-app-uat.nepalirudraksha.com/api/v2/mantra/deities
 def _fetch_mantra_data_cached(_date_str: str):
     """Fetch mantra/deity data from the mantras API, cached once per calendar day.
     Raises on failure so lru_cache does not store the error result."""
-    req = urlrequest.Request(MANTRA_API_URL, headers={"Accept": "application/json"})
-    with urlrequest.urlopen(req, timeout=10) as resp:
-        return json.loads(resp.read().decode("utf-8")).get("data") or []
+    resp = HTTP_SESSION.get(MANTRA_API_URL, headers={"Accept": "application/json"}, timeout=10)
+    resp.raise_for_status()  # match urllib: non-2xx raises (so the error isn't cached)
+    return json.loads(resp.content.decode("utf-8")).get("data") or []
 
 
 def get_mantra_data():
@@ -934,6 +992,7 @@ def _p(name, pid, vid, reason):
         "id": pid,
         "variant_id": vid,
         "reason": reason,
+        "deity": details.get("deity", ""),
         "about": details.get("about", ""),
         "ritual_sequence": details.get("ritual_sequence", []),
     }
@@ -941,6 +1000,7 @@ def _p(name, pid, vid, reason):
 
 POOJA_DETAILS = {
     "7468622348530": {  # Maha Shivaratri Pooja at Pashupatinath
+        "deity": "Lord Shiva",
         "about": "A sacred all-night vigil puja performed at Pashupatinath Temple on Maha Shivaratri, one of the most auspicious nights of the year. Lord Shiva is worshipped in his Pashupati form with Rudrabhishek, bilva archana, and Shiva stotrams chanted through four praharas (night watches).",
         "ritual_sequence": [
             "Sankalpa (declaration of intent) before sunset",
@@ -952,6 +1012,7 @@ POOJA_DETAILS = {
         ],
     },
     "9035889672434": {  # Masik Shivaratri Pooja at Pashupatinath
+        "deity": "Lord Shiva",
         "about": "Monthly Shivaratri (Masik Shivaratri) puja observed on Krishna Paksha Chaturdashi each month at Pashupatinath. A smaller yet significant Shiva worship for regular devotees seeking blessings for health, peace, and removal of obstacles.",
         "ritual_sequence": [
             "Evening bath and clean white or grey clothes",
@@ -963,6 +1024,7 @@ POOJA_DETAILS = {
         ],
     },
     "7465529606386": {  # Karya Siddhi Ganesh Pooja
+        "deity": "Lord Ganesha",
         "about": "Dedicated to Lord Ganesha, the remover of obstacles, this puja is performed on Chaturthi tithis for success in new endeavors, clearing blockages, and obtaining Ganesha's blessings before starting any important work or journey.",
         "ritual_sequence": [
             "Place Ganesha idol or image facing east",
@@ -974,6 +1036,7 @@ POOJA_DETAILS = {
         ],
     },
     "8820054950130": {  # Lakshmi Kuber Pooja
+        "deity": "Goddess Lakshmi & Lord Kubera",
         "about": "A prosperity puja combining worship of Goddess Lakshmi (abundance, wealth) and Lord Kubera (treasury, material success). Performed on auspicious tithis like Purnima, Dhanteras, and Trayodashi to attract financial stability and remove wealth blockages.",
         "ritual_sequence": [
             "Clean altar and place Lakshmi and Kubera yantras or idols",
@@ -985,6 +1048,7 @@ POOJA_DETAILS = {
         ],
     },
     "7465532653810": {  # Rudra Abishek Pooja
+        "deity": "Lord Shiva",
         "about": "Rudrabhishek is a powerful Shiva puja where the Shivalinga is bathed with Panchamrita (milk, curd, ghee, honey, sugar) and sacred substances while Shri Rudram is chanted. It is especially performed on Krishna Pradosh for removing planetary afflictions and bringing peace.",
         "ritual_sequence": [
             "Purify the Shivalinga with clean water",
@@ -996,6 +1060,7 @@ POOJA_DETAILS = {
         ],
     },
     "7465524363506": {  # Laxmi Narayan Pooja
+        "deity": "Lord Vishnu & Goddess Lakshmi",
         "about": "A joint worship of Lord Vishnu and Goddess Lakshmi performed on Ekadashi, Purnima, and Trayodashi. It invokes divine grace for prosperity, domestic harmony, and spiritual merit. Especially significant on Ekadashi for Vishnu bhaktas.",
         "ritual_sequence": [
             "Fast or eat only sattvic food from the previous day",
@@ -1007,6 +1072,7 @@ POOJA_DETAILS = {
         ],
     },
     "8817900945650": {  # Shri Durga Saptshati Chandi Path
+        "deity": "Goddess Durga",
         "about": "Chandi Path (Durga Saptashati) is a 700-verse recitation from Markandeya Purana glorifying Goddess Durga's victories over evil. It is recited during Navaratri and Navami for protection, victory over adversaries, and divine feminine grace.",
         "ritual_sequence": [
             "Take morning bath and wear clean red or white clothes",
@@ -1018,6 +1084,7 @@ POOJA_DETAILS = {
         ],
     },
     "8955542700274": {  # Kaal Bhairav and Shakti Maha Puja
+        "deity": "Lord Kaal Bhairav & Shakti",
         "about": "A tantric puja to Lord Kaal Bhairav (fierce form of Shiva) and Shakti performed on Krishna Ashtami. It is believed to protect from enemies, negative energies, and fear, and to strengthen the mind against obstacles and delays.",
         "ritual_sequence": [
             "Perform puja in the evening or night hours",
@@ -1026,6 +1093,19 @@ POOJA_DETAILS = {
             "Chant Bhairav Ashtakam or Bhairav Kavach",
             "Offer alcohol or dark sweets as naivedyam per tradition",
             "Take protection sankalpa and seek removal of fear and obstacles",
+        ],
+    },
+    "7465527705842": {  # Navagraha Shanti Pooja with Hawan
+        "deity": "Navagraha (The Nine Planets)",
+        "about": "Navagraha Shanti is a comprehensive puja and hawan (fire ritual) performed to pacify and balance the energies of all nine planets — Surya, Chandra, Mangal, Budh, Guru, Shukra, Shani, Rahu, and Ketu. It is especially recommended on birthdays and during challenging planetary periods (dashas) or doshas, to harmonize planetary influences, remove obstacles, and invite health, prosperity, and peace for the year ahead.",
+        "ritual_sequence": [
+            "Sankalpa (declaration of intent) for planetary peace and well-being",
+            "Invocation (avahana) of all nine Grahas with their bija mantras",
+            "Navagraha homa (hawan) with the prescribed samidha and dravya for each planet",
+            "Recitation of the Navagraha Stotram and individual graha mantras",
+            "Offering of nine grains, cloths, and colours associated with each planet",
+            "Purnahuti (final offering) and aarti seeking the blessings of all Grahas",
+            "Distribution of prasad and tying of a protective thread",
         ],
     },
 }
@@ -1111,6 +1191,227 @@ def get_poojas_for_day(tithi_number, paksha, amanta_month, day_of_week, festival
                          "Krishna Paksha Ashtami"))
 
     return poojas if poojas else [{"name": "None", "id": None, "variant_id": None, "reason": None}]
+
+
+# ============================================================
+# KUNDLI-BASED POOJA RECOMMENDATIONS
+# Driven by the birth chart (dasha lords + doshas) and the birthday,
+# independent of the calendar-based poojas in get_poojas_for_day().
+# ============================================================
+
+# TODO: replace the Navagraha variant id below with the real Shopify variant id
+# (only the product id 7465527705842 was provided).
+_NAVAGRAHA_VARIANT_ID = "42114175566066"
+
+# pooja_key -> (display name, product_id, variant_id) — reuses the existing catalog.
+_KUNDALI_POOJA_CATALOG = {
+    "laxmi_narayan":       ("Laxmi Narayan Pooja",                "7465524363506", "42114162000114"),
+    "rudra_abishek":       ("Rudra Abishek Pooja",                "7465532653810", "42114187985138"),
+    "kaal_bhairav":        ("Kaal Bhairav and Shakti Maha Puja",  "8955542700274", "48729126895858"),
+    "lakshmi_kuber":       ("Lakshmi Kuber Pooja",                "8820054950130", "47901573153010"),
+    "karya_siddhi_ganesh": ("Karya Siddhi Ganesh Pooja",          "7465529606386", "42114181464306"),
+    "navagraha_shanti":    ("Navagraha Shanti Pooja with Hawan",  "7465527705842", "42114175566066"),
+}
+
+# Natal/transit planet (canonical English) -> remedial pooja from the catalog.
+PLANET_TO_POOJA = {
+    "Sun":     "laxmi_narayan",
+    "Moon":    "rudra_abishek",
+    "Mars":    "kaal_bhairav",
+    "Mercury": "laxmi_narayan",
+    "Jupiter": "laxmi_narayan",
+    "Venus":   "lakshmi_kuber",
+    "Saturn":  "rudra_abishek",
+    "Rahu":    "kaal_bhairav",
+    "Ketu":    "karya_siddhi_ganesh",
+}
+
+# Sanskrit/English planet name variants -> canonical English name.
+_PLANET_ALIASES = {
+    "sun": "Sun", "surya": "Sun", "ravi": "Sun",
+    "moon": "Moon", "chandra": "Moon", "soma": "Moon",
+    "mars": "Mars", "mangal": "Mars", "mangala": "Mars", "kuja": "Mars", "angaraka": "Mars",
+    "mercury": "Mercury", "budh": "Mercury", "budha": "Mercury",
+    "jupiter": "Jupiter", "guru": "Jupiter", "brihaspati": "Jupiter", "brhaspati": "Jupiter",
+    "venus": "Venus", "shukra": "Venus", "sukra": "Venus",
+    "saturn": "Saturn", "shani": "Saturn", "sani": "Saturn",
+    "rahu": "Rahu",
+    "ketu": "Ketu",
+}
+
+
+def _normalize_planet(name):
+    if not name:
+        return None
+    key = str(name).strip().lower()
+    if key in _PLANET_ALIASES:
+        return _PLANET_ALIASES[key]
+    for alias, canon in _PLANET_ALIASES.items():
+        if alias in key:
+            return canon
+    return None
+
+
+def _is_birthday(dob_str, today_str):
+    """True if today (YYYY-MM-DD) matches the birth month/day. Feb-29 births fall on
+    Feb 29 in leap years, else Mar 1."""
+    if not dob_str or not today_str:
+        return False
+    try:
+        dob = datetime.strptime(str(dob_str)[:10], "%Y-%m-%d").date()
+        today = datetime.strptime(str(today_str)[:10], "%Y-%m-%d").date()
+    except Exception:
+        return False
+    if dob.month == 2 and dob.day == 29:
+        if today.month == 2 and today.day == 29:
+            return True
+        import calendar
+        return today.month == 3 and today.day == 1 and not calendar.isleap(today.year)
+    return dob.month == today.month and dob.day == today.day
+
+
+def _truthy_dosha(value):
+    """Best-effort: does this value indicate a dosha is PRESENT? (schema unknown)."""
+    if value is None or value is False:
+        return False
+    if value is True:
+        return True
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() not in ("", "no", "false", "none", "absent", "not present", "nil", "0")
+    if isinstance(value, dict):
+        for flag in ("present", "is_present", "has_dosha", "exists", "applicable", "status"):
+            if flag in value:
+                return _truthy_dosha(value.get(flag))
+        return bool(value)
+    if isinstance(value, list):
+        return any(_truthy_dosha(v) for v in value)
+    return bool(value)
+
+
+def _is_negated(text):
+    """True if a free-text dosha label is phrased as absent (e.g. 'No Manglik')."""
+    t = " " + str(text).strip().lower() + " "
+    return any(tok in t for tok in (" no ", " not ", " none ", " absent", " nil ", " n/a ", " false ", " without "))
+
+
+def _detect_doshas(kundali_result):
+    """Best-effort dosha detection against an unknown report schema.
+    Returns list of (label, pooja_key). Safe (returns []) if nothing matches."""
+    if not isinstance(kundali_result, dict):
+        return []
+    found, seen = [], set()
+
+    def record(label, pooja_key):
+        if label not in seen:
+            seen.add(label)
+            found.append((label, pooja_key))
+
+    # 1) explicit named flag keys
+    key_rules = [
+        (("manglik", "is_manglik", "mangal_dosha", "mangal_dosh", "kuja_dosha", "angarak_dosha"),
+         "Manglik (Mangal) dosha", "kaal_bhairav"),
+        (("sade_sati", "shani_sade_sati", "sadhe_sati", "shani_dosha", "saturn_dosha"),
+         "Shani Sade Sati / Shani dosha", "rudra_abishek"),
+        (("kaal_sarp_dosha", "kaalsarp", "kaal_sarp", "kal_sarp", "kala_sarpa_dosha"),
+         "Kaal Sarp dosha", "navagraha_shanti"),
+    ]
+    for keys, label, pooja_key in key_rules:
+        for k in keys:
+            if k in kundali_result and _truthy_dosha(kundali_result.get(k)):
+                record(label, pooja_key)
+                break
+
+    # 2) a general "doshas" collection (list or dict) scanned by name
+    name_rules = [
+        (("manglik", "mangal", "kuja", "angarak"), "Manglik (Mangal) dosha", "kaal_bhairav"),
+        (("sade sati", "sadhe sati", "sade-sati", "shani", "saturn"), "Shani Sade Sati / Shani dosha", "rudra_abishek"),
+        (("kaal sarp", "kaalsarp", "kal sarp", "kaal sarpa", "kala sarpa"), "Kaal Sarp dosha", "navagraha_shanti"),
+    ]
+    container = kundali_result.get("doshas")
+    items = []
+    if isinstance(container, list):
+        items = container
+    elif isinstance(container, dict):
+        items = [name for name, val in container.items() if _truthy_dosha(val)]
+    for it in items:
+        if isinstance(it, str):
+            text = it
+        elif isinstance(it, dict):
+            if any(f in it for f in ("present", "is_present", "has_dosha", "exists", "applicable", "status")) \
+                    and not _truthy_dosha(it):
+                continue
+            text = " ".join(str(it.get(k, "")) for k in ("name", "type", "dosha", "title"))
+        else:
+            continue
+        if _is_negated(text):
+            continue
+        tl = text.lower()
+        for subs, label, pooja_key in name_rules:
+            if any(s in tl for s in subs):
+                record(label, pooja_key)
+    return found
+
+
+def get_kundali_pooja_recommendations(kundali_result, birth_details, day_data):
+    """Recommend poojas from the birth chart (dasha lords + doshas) and the birthday.
+    Independent of the calendar-based upcoming_poojas. Returns a self-describing dict."""
+    recs = {}  # product_id -> entry
+
+    def add(pooja_key, reason, priority):
+        name, pid, vid = _KUNDALI_POOJA_CATALOG[pooja_key]
+        if pid in recs:
+            if reason not in recs[pid]["_reasons"]:
+                recs[pid]["_reasons"].append(reason)
+            recs[pid]["_priority"] = min(recs[pid]["_priority"], priority)
+            return
+        entry = _p(name, pid, vid, reason)
+        entry["_reasons"] = [reason]
+        entry["_priority"] = priority
+        recs[pid] = entry
+
+    birth_details = birth_details or {}
+    dob = str(birth_details.get("date_of_birth") or "").strip()
+    today = str((day_data or {}).get("date") or "").strip()
+    is_birthday = _is_birthday(dob, today)
+
+    if is_birthday:
+        add("navagraha_shanti",
+            "Birthday — Navagraha Shanti Pooja to balance all nine planets and bless the year ahead.", 0)
+
+    for label, pooja_key in _detect_doshas(kundali_result):
+        add(pooja_key, f"{label} — remedial pooja.", 1)
+
+    if isinstance(kundali_result, dict):
+        maha = _normalize_planet((kundali_result.get("current_mahadasha") or {}).get("name"))
+        antar = _normalize_planet((kundali_result.get("current_antardasha") or {}).get("name"))
+        if maha and maha in PLANET_TO_POOJA:
+            add(PLANET_TO_POOJA[maha],
+                f"Current Mahadasha lord ({maha}) — strengthen and pacify its influence.", 2)
+        if antar and antar in PLANET_TO_POOJA and antar != maha:
+            add(PLANET_TO_POOJA[antar],
+                f"Current Antardasha lord ({antar}) — support the running sub-period.", 3)
+
+    ordered = sorted(recs.values(), key=lambda e: (e["_priority"], e["name"]))
+    for e in ordered:
+        e["reason"] = " ".join(e.pop("_reasons"))
+        e.pop("_priority", None)
+
+    if not dob and not isinstance(kundali_result, dict):
+        status = "no_birth_details"
+    elif not ordered:
+        status = "no_recommendation"
+    else:
+        status = "ok"
+
+    return {
+        "status": status,
+        "is_birthday": is_birthday,
+        "recommendations": ordered,
+        "note": ("Recommendations are derived from your birth chart (current dasha lords, doshas) "
+                 "and birthday. They are independent of the calendar-based upcoming poojas."),
+    }
 
 
 # ============================================================
@@ -1295,6 +1596,10 @@ EVENT_DEITY_MAP = {
     "vasant panchami": {"name": "Goddess Saraswati",         "description": "Vasant Panchami is dedicated to Goddess Saraswati, the deity of knowledge, arts, and wisdom. Students and creators seek her blessings for learning, eloquence, and creativity."},
     "raksha bandhan": {"name": "Lord Vishnu / Indra Deva",   "description": "Raksha Bandhan invokes divine protection through the sacred thread. It is associated with Lord Vishnu's protection and the strength of the sibling bond."},
     "akshaya tritiya": {"name": "Lord Vishnu / Lakshmi",     "description": "Akshaya Tritiya is one of the most auspicious days of the year, sacred to Vishnu and Lakshmi. 'Akshaya' means imperishable — any virtuous act done today yields unending merit."},
+    "kalashtami":    {"name": "Lord Kala Bhairava",          "description": "Kalashtami, the Ashtami of Krishna Paksha, is dedicated to Lord Kala Bhairava, the fierce protective form of Shiva. Worship invokes his protection, courage, and the removal of fear and hidden obstacles."},
+    "durga ashtami": {"name": "Goddess Durga",               "description": "Durga Ashtami honors Goddess Durga in her warrior Shakti form. Worship on this day invokes strength, protection, and victory over inner and outer obstacles."},
+    "radha ashtami": {"name": "Radha Rani",                  "description": "Radha Ashtami celebrates the birth of Radha Rani, the beloved of Lord Krishna and embodiment of pure devotion. Worship deepens bhakti, love, and grace."},
+    "ashtami":       {"name": "Goddess Durga / Lord Bhairava","description": "Ashtami, the 8th tithi, carries Shakti energy — Shukla Ashtami is sacred to Goddess Durga, while Krishna Ashtami (Kalashtami) honors Lord Bhairava. The day supports strength, protection, and courage."},
 }
 
 
@@ -1970,8 +2275,7 @@ def _precompute_month_events_and_poojas(lat_r, lon_r, tz_name, year, month, mont
         festivals    = (fixed + lunar) or ["None"]
         vratas_list  = vratas or ["None"]
         clean_f  = _clean_event_list(festivals)
-        clean_v  = [v for v in _clean_event_list(vratas_list)
-                    if "ekadashi" in v.lower() or "pradosh" in v.lower()]
+        clean_v  = [v for v in _clean_event_list(vratas_list) if _is_significant_vrata(v)]
         event_titles = clean_f + clean_v
         if event_titles:
             event_title = event_titles[0]
@@ -2059,6 +2363,18 @@ def _clean_event_list(values):
     return [v for v in (values or []) if v and v != "None"]
 
 
+# Tithis significant enough to surface in Upcoming Spiritual Events even without a
+# named festival on that day. Matched as case-insensitive substrings against vrata names
+# (e.g. "Kalashtami (Monthly)" -> ashtami, "Sankashti Chaturthi (Monthly)" -> chaturthi,
+# "Purnima Vrat (Monthly)" -> purnima, "Amavasya Vrat (Monthly)" -> amavasya).
+SIGNIFICANT_VRATA_KEYWORDS = ("ekadashi", "pradosh", "ashtami", "chaturthi", "purnima", "amavasya")
+
+
+def _is_significant_vrata(name):
+    n = (name or "").lower()
+    return any(k in n for k in SIGNIFICANT_VRATA_KEYWORDS)
+
+
 def _event_guidance(event_name, paksha):
     e = (event_name or "").lower()
     if "ekadashi" in e:
@@ -2089,6 +2405,36 @@ def _event_guidance(event_name, paksha):
             "avoid_practices": [
                 "Anger, harsh speech, and rushing through evening worship.",
                 "Starting avoidable confrontational tasks during twilight."
+            ],
+        }
+    if "ashtami" in e and "janma" not in e:
+        if paksha == "Krishna Paksha":
+            return {
+                "description": "Kalashtami falls on the Ashtami (8th tithi) of Krishna Paksha each month and is dedicated to Lord Kala Bhairava, the fierce protective form of Lord Shiva. It is observed for courage, protection from negative forces, and the removal of fear and hidden obstacles.",
+                "why_it_matters": "Krishna Ashtami (Kalashtami) invokes Bhairava's protection — clearing fear, negativity, and hidden obstacles.",
+                "who_should_use_it": "Those seeking protection, courage, or relief from persistent fear and obstacles.",
+                "recommended_practices": [
+                    "Light a mustard-oil or sesame-oil lamp before Bhairava in the evening.",
+                    "Chant the Bhairava or Shiva mantra and offer black sesame.",
+                    "Keep food light and observe a calm, disciplined day.",
+                ],
+                "avoid_practices": [
+                    "Anger, harsh speech, and reckless risk-taking.",
+                    "Non-vegetarian food and intoxicants.",
+                ],
+            }
+        return {
+            "description": "Shukla Ashtami (the 8th tithi of the waxing fortnight) is sacred to Goddess Durga in her Shakti form, observed as Masik Durga Ashtami. It is a day for invoking strength, protection, and victory over inner and outer obstacles.",
+            "why_it_matters": "Shukla Ashtami channels Durga's Shakti for strength, protection, and resolve.",
+            "who_should_use_it": "Devotees seeking courage, protection, and spiritual strength.",
+            "recommended_practices": [
+                "Offer red flowers, kumkum, and incense to Goddess Durga.",
+                "Recite Durga Chalisa or a Devi stotram.",
+                "Observe a light sattvic fast if health permits.",
+            ],
+            "avoid_practices": [
+                "Tamasic food, alcohol, and conflict.",
+                "Negative or harsh speech.",
             ],
         }
     if "sankashti" in e or "chaturthi" in e:
@@ -2171,11 +2517,13 @@ def _spiritual_event_priority(row):
         return 0
     if "pradosh" in text:
         return 1
-    if row.get("all_events"):
+    if "ashtami" in text:
         return 2
-    if "festival" in text or "jayanti" in text or "purnima" in text:
+    if row.get("all_events"):
         return 3
-    return 4
+    if "festival" in text or "jayanti" in text or "purnima" in text:
+        return 4
+    return 5
 
 
 def get_upcoming_spiritual_events(lat_r, lon_r, tz_name, from_date, days_ahead=7, month_system="both"):
@@ -2205,7 +2553,7 @@ def get_upcoming_spiritual_events(lat_r, lon_r, tz_name, from_date, days_ahead=7
         poojas = get_poojas_for_day(tithi_number, paksha, amanta_month, day_of_week, fixed + lunar)
 
         clean_festivals = _clean_event_list(festivals)
-        clean_vratas = [v for v in _clean_event_list(vratas) if ("ekadashi" in v.lower() or "pradosh" in v.lower())]
+        clean_vratas = [v for v in _clean_event_list(vratas) if _is_significant_vrata(v)]
         event_titles = clean_festivals + clean_vratas
         if not event_titles:
             continue
@@ -2724,6 +3072,17 @@ def _extract_rashi_name(value):
     return _normalize_rashi(plain)
 
 
+# Process-local cache of successful kundali reports, keyed on the exact request
+# payload plus a UTC day stamp. The upstream report only changes day-to-day at
+# the resolution this API exposes (mahadasha/antardasha span months/years), so a
+# same-day cache returns identical data while avoiding a repeated blocking POST.
+# Only successful responses are cached, so transient failures still retry exactly
+# as before.
+_KUNDALI_CACHE = {}
+_KUNDALI_CACHE_LOCK = threading.Lock()
+_KUNDALI_CACHE_MAX = 2048
+
+
 def _fetch_kundali_report(birth_details, fallback_tz_name, person_name=None):
     required = ["date_of_birth", "time_of_birth", "birth_latitude", "birth_longitude"]
     if not birth_details or any(birth_details.get(k) in (None, "") for k in required):
@@ -2743,21 +3102,41 @@ def _fetch_kundali_report(birth_details, fallback_tz_name, person_name=None):
         "user_currency": str(birth_details.get("user_currency") or "INR"),
     }
 
+    # Cache key: full payload (sorted) + current UTC day → refreshes daily.
+    cache_key = (
+        tuple(sorted(payload.items())),
+        datetime.now(pytz.utc).strftime("%Y-%m-%d"),
+    )
+    with _KUNDALI_CACHE_LOCK:
+        cached = _KUNDALI_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
     try:
-        req = urlrequest.Request(
+        # data=<exact bytes> (not json=) so the request body is byte-identical to
+        # the previous urllib call; raise_for_status() mirrors urllib raising on
+        # non-2xx, keeping the kundali_api_error path unchanged.
+        response = HTTP_SESSION.post(
             KUNDALI_REPORT_URL,
             data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json"},
-            method="POST",
+            timeout=KUNDALI_TIMEOUT_SECONDS,
         )
-        with urlrequest.urlopen(req, timeout=KUNDALI_TIMEOUT_SECONDS) as response:
-            raw = response.read().decode("utf-8")
+        response.raise_for_status()
+        raw = response.content.decode("utf-8")
         parsed = json.loads(raw or "{}")
         if not parsed.get("ok") or not isinstance(parsed.get("result"), dict):
             return {"ok": False, "status": "kundali_api_failed", "result": None}
-        return {"ok": True, "status": "ok", "result": parsed.get("result")}
+        result = {"ok": True, "status": "ok", "result": parsed.get("result")}
     except Exception:
         return {"ok": False, "status": "kundali_api_error", "result": None}
+
+    # Cache successful results only (failures keep retrying as before).
+    with _KUNDALI_CACHE_LOCK:
+        if len(_KUNDALI_CACHE) >= _KUNDALI_CACHE_MAX:
+            _KUNDALI_CACHE.clear()
+        _KUNDALI_CACHE[cache_key] = result
+    return result
 
 
 def _build_natal_house_map(kundali_result):
@@ -3104,6 +3483,9 @@ def build_app_response(day_data, upcoming_spiritual_events, rashi=None, person_n
             min_day=3,
             max_day=7,
         ),
+        "personalized_pooja_recommendations": get_kundali_pooja_recommendations(
+            kundali_result, birth_details, day_data
+        ),
         "personalized_planetary_transits": personalized_transits,
         "today_horoscope": real_today_horoscope,
         "general_horoscope_all_rashi": general_all,
@@ -3420,6 +3802,12 @@ def astrology_api_view():
         if timezone_str is None:
             return jsonify({"error": "Timezone could not be determined from the provided coordinates."}), 400
 
+        # Kick off the blocking kundali fetch now so it overlaps the Skyfield
+        # compute below; resolved at build_app_response time (data unchanged).
+        kundali_future = IO_EXECUTOR.submit(
+            _fetch_kundali_report, birth_details, timezone_str, person_name
+        )
+
         tz = pytz.timezone(timezone_str)
         now_local = datetime.now(tz)
         date_ymd = now_local.strftime("%Y-%m-%d")
@@ -3642,7 +4030,8 @@ def astrology_api_view():
             lat_r, lon_r, timezone_str, now_local.date(), days_ahead=7, month_system=month_system
         )
         app_response = build_app_response(
-            response_payload, upcoming_spiritual_events, requested_rashi, person_name, birth_details, timezone_str, upcoming_poojas
+            response_payload, upcoming_spiritual_events, requested_rashi, person_name, birth_details, timezone_str, upcoming_poojas,
+            precomputed_kundali_data=kundali_future.result(),
         )
         response_payload = order_day_payload(response_payload)
         response_payload["app_response"] = app_response
@@ -3685,12 +4074,27 @@ def monthly_panchanga_api():
         if not (1900 <= year <= 2100):
             return jsonify({"error": "Invalid year. Must be between 1900 and 2100."}), 400
 
+        # Non-personalized requests are deterministic for (request body, UTC day):
+        # serve an identical cached response and skip the full-month compute.
+        cacheable = not _request_has_birth_details(data)
+        cache_key = _response_cache_key("/monthly-panchanga", data) if cacheable else None
+        if cache_key is not None:
+            cached = _response_cache_get(cache_key)
+            if cached is not None:
+                return jsonify(cached)
+
         lat_r = round_coord(latitude)
         lon_r = round_coord(longitude)
 
         timezone_str = cached_timezone_str(lat_r, lon_r)
         if timezone_str is None:
             return jsonify({"error": "Timezone could not be determined from the provided coordinates."}), 400
+
+        # Fetch kundali once (birth data is static across all days) and let the
+        # blocking call overlap the cache pre-warm + batch compute below.
+        kundali_future = IO_EXECUTOR.submit(
+            _fetch_kundali_report, birth_details, timezone_str, person_name
+        )
 
         # Warm moon phase cache
         cached_moon_phases_for_month(year, month, timezone_str)
@@ -3712,8 +4116,8 @@ def monthly_panchanga_api():
         # Batch-compute all anga end times (4 find_discrete calls vs 30×4=120)
         batch_end_times = compute_month_anga_end_times_batch(year, month, timezone_str)
 
-        # Fetch kundali once — birth data is static across all days
-        precomputed_kundali = _fetch_kundali_report(birth_details, timezone_str, person_name)
+        # Resolve the kundali fetch started above (it ran during the warm-up).
+        precomputed_kundali = kundali_future.result()
 
         # Precompute spiritual events & poojas for the entire month + 7-day tail in one pass
         events_by_date, poojas_by_date = _precompute_month_events_and_poojas(
@@ -3760,7 +4164,7 @@ def monthly_panchanga_api():
             })
             monthly_data.append(order_day_payload(day_data))
 
-        return jsonify({
+        response_dict = {
             "month": month,
             "year": year,
             "latitude": latitude,
@@ -3769,7 +4173,10 @@ def monthly_panchanga_api():
             "total_days": num_days,
             "panchanga_data": monthly_data,
             "app_response": monthly_app_response,
-        })
+        }
+        if cache_key is not None:
+            _response_cache_put(cache_key, response_dict)
+        return jsonify(response_dict)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -3807,12 +4214,26 @@ def panchanga_date_api():
         except ValueError:
             return jsonify({"error": "Invalid date (e.g. day out of range for month)."}), 400
 
+        # Non-personalized requests are deterministic for (request body, UTC day):
+        # serve an identical cached response and skip the Skyfield compute.
+        cacheable = not _request_has_birth_details(data)
+        cache_key = _response_cache_key("/panchanga-date", data) if cacheable else None
+        if cache_key is not None:
+            cached = _response_cache_get(cache_key)
+            if cached is not None:
+                return jsonify(cached)
+
         lat_r = round_coord(latitude)
         lon_r = round_coord(longitude)
 
         timezone_str = cached_timezone_str(lat_r, lon_r)
         if timezone_str is None:
             return jsonify({"error": "Timezone could not be determined from the provided coordinates."}), 400
+
+        # Overlap the blocking kundali fetch with the Skyfield compute below.
+        kundali_future = IO_EXECUTOR.submit(
+            _fetch_kundali_report, birth_details, timezone_str, person_name
+        )
 
         panchanga_data = calculate_panchanga_for_date(
             latitude,
@@ -3831,24 +4252,54 @@ def panchanga_date_api():
             month_system=month_system
         )
         app_response = build_app_response(
-            panchanga_data, upcoming_spiritual_events, requested_rashi, person_name, birth_details, timezone_str, upcoming_poojas
+            panchanga_data, upcoming_spiritual_events, requested_rashi, person_name, birth_details, timezone_str, upcoming_poojas,
+            precomputed_kundali_data=kundali_future.result(),
         )
         panchanga_data = order_day_payload(panchanga_data)
 
-        return jsonify({
+        response_dict = {
             "latitude": latitude,
             "longitude": longitude,
             "timezone": timezone_str,
             "panchanga_data": panchanga_data,
             "upcoming_poojas": upcoming_poojas,
             "app_response": app_response,
-        })
+        }
+        if cache_key is not None:
+            _response_cache_put(cache_key, response_dict)
+        return jsonify(response_dict)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
 # ============================================================
-# 15) RUN
+# 15) STARTUP PREWARM
+# ============================================================
+def _prewarm():
+    """Warm caches on a fresh worker so the first request doesn't pay one-time
+    costs: the daily mantra fetch and Skyfield/NumPy lazy initialization.
+    Runs in the background at import so it never blocks worker startup or
+    serving. Failures are ignored — every path already degrades gracefully."""
+    try:
+        get_mantra_data()  # warms the per-day mantra lru_cache
+    except Exception:
+        pass
+    try:
+        # One throwaway compute warms Skyfield/NumPy lazy state and pages the
+        # ephemeris into memory. Kathmandu is a sensible default origin.
+        lat_r, lon_r = round_coord(27.7172), round_coord(85.3240)
+        tz_name = cached_timezone_str(lat_r, lon_r)
+        if tz_name:
+            calculate_panchanga_for_date(lat_r, lon_r, datetime.now(), tz_name)
+    except Exception:
+        pass
+
+
+# Kick off prewarm in the background at import (covers gunicorn workers too).
+IO_EXECUTOR.submit(_prewarm)
+
+# ============================================================
+# 16) RUN
 # ============================================================
 if __name__ == "__main__":
     app.run(debug=True,port=5001)
