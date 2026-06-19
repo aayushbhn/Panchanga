@@ -3149,13 +3149,30 @@ def _fetch_kundali_report(birth_details, fallback_tz_name, person_name=None):
     if len(time_str) == 5:
         time_str = f"{time_str}:00"
 
+    # The birth chart MUST use the BIRTH location's timezone, not the user's
+    # current-location timezone. Prefer an explicit birth_timezone; otherwise
+    # derive it from the birth coordinates. Only fall back to the current-location
+    # tz (fallback_tz_name) as a last resort if that derivation fails — sending the
+    # current tz with foreign birth coordinates produces a wrong chart (e.g. a US
+    # birth read with an India timezone).
+    birth_tz = birth_details.get("birth_timezone")
+    if not birth_tz:
+        try:
+            birth_tz = cached_timezone_str(
+                round_coord(float(birth_details.get("birth_latitude"))),
+                round_coord(float(birth_details.get("birth_longitude"))),
+            )
+        except Exception:
+            birth_tz = None
+    birth_tz = birth_tz or fallback_tz_name or "Asia/Kathmandu"
+
     payload = {
         "name": person_name or "Panchanga User",
         "date": str(birth_details.get("date_of_birth")).strip(),
         "time": time_str,
         "latitude": str(birth_details.get("birth_latitude")).strip(),
         "longitude": str(birth_details.get("birth_longitude")).strip(),
-        "timezone": (birth_details.get("birth_timezone") or fallback_tz_name or "Asia/Kathmandu"),
+        "timezone": birth_tz,
         "user_currency": str(birth_details.get("user_currency") or "INR"),
     }
 
@@ -3616,6 +3633,367 @@ def order_day_payload(d):
         "daily_summary": d.get("daily_summary"),
         "sun_moon_angle": d.get("sun_moon_angle"),
         "sun_sidereal": d.get("sun_sidereal"),
+    }
+
+
+def _event_key(name):
+    """Stable slug for a festival/event name → join key for app content
+    (blog URL, recommended mukhi). e.g. 'Guru Purnima' -> 'guru_purnima'."""
+    out = []
+    for ch in str(name).lower():
+        if ch.isalnum():
+            out.append(ch)
+        elif ch in (" ", "-", "_", "/"):
+            out.append("_")
+        # other punctuation (parentheses, etc.) is dropped
+    slug = "".join(out)
+    while "__" in slug:
+        slug = slug.replace("__", "_")
+    return slug.strip("_")
+
+
+# --- Festival content table (A2) ---------------------------------------------
+# Curated, festival-SPECIFIC copy so a notification never describes a generic
+# paksha when it should describe the actual festival. Keyed by the exact name
+# used in `festival_mapping`. Looked up first; `_event_guidance` is the fallback.
+#
+#   description       — 1–2 sentences, factual, shown in the app detail view.
+#   why_it_matters    — one punchy sentence; drives the notification tap.
+#   recommended_mukhi — traditional deity→Rudraksha association. THESE ARE
+#                       DEFAULTS — confirm against the Nepa Rudraksha catalogue.
+#   blog_url          — left None; fill with the real blog link per festival.
+FESTIVAL_CONTENT = {
+    # ---- Secular / national / solar fixed-date ----
+    "Makar Sankranti": {"description": "Makar Sankranti marks the Sun's entry into Capricorn (Makara) and the start of its northward journey (Uttarayana). It is a harvest festival celebrated with til-gud, kite-flying, and holy river dips.", "why_it_matters": "The Sun turns northward — an auspicious turning point for new beginnings and Surya worship.", "recommended_mukhi": "12"},
+    "International Yoga Day": {"description": "International Yoga Day celebrates yoga's gift of physical, mental, and spiritual wellbeing. It falls on the summer solstice, the longest day of the year.", "why_it_matters": "A global day to reset body and mind through yoga and breath.", "recommended_mukhi": None},
+    "Lohri": {"description": "Lohri is a Punjabi winter harvest festival celebrated around a bonfire with songs, dance, and offerings of til, gud, and popcorn to the fire.", "why_it_matters": "A bonfire festival marking the end of peak winter and the coming harvest.", "recommended_mukhi": None},
+    "Pongal": {"description": "Pongal is the four-day Tamil harvest festival thanking the Sun god for a bountiful crop, celebrated by boiling the season's first rice.", "why_it_matters": "A Tamil thanksgiving to Surya for the harvest's abundance.", "recommended_mukhi": "12"},
+    "Magh Bihu": {"description": "Magh Bihu (Bhogali Bihu) is Assam's harvest festival of feasting and community bonfires (Meji), marking the end of the harvesting season.", "why_it_matters": "Assam's harvest feast — gratitude, fire, and community.", "recommended_mukhi": None},
+    "Republic Day (India)": {"description": "Republic Day commemorates the day the Constitution of India came into effect in 1950.", "why_it_matters": "India honours the Constitution and its republic.", "recommended_mukhi": None},
+    "Independence Day (India)": {"description": "Independence Day marks India's freedom from colonial rule in 1947.", "why_it_matters": "India celebrates its freedom and unity.", "recommended_mukhi": None},
+    "Gandhi Jayanti": {"description": "Gandhi Jayanti honours the birth of Mahatma Gandhi and his message of truth and non-violence.", "why_it_matters": "A day of truth, non-violence, and service.", "recommended_mukhi": None},
+    "Christmas": {"description": "Christmas celebrates the birth of Jesus Christ with worship, family gatherings, and giving.", "why_it_matters": "A day of peace, giving, and togetherness.", "recommended_mukhi": None},
+
+    # ---- Magha ----
+    "Vasant Panchami": {"description": "Vasant Panchami heralds spring and is dedicated to Goddess Saraswati, the deity of knowledge, music, and arts. Devotees wear yellow and bless books and instruments.", "why_it_matters": "Saraswati's day — ideal to begin learning, music, or any new study.", "recommended_mukhi": "4"},
+    "Ratha Saptami": {"description": "Ratha Saptami marks the Sun god turning his chariot northward and is observed with dawn river baths and Surya arghya for health and vitality.", "why_it_matters": "A Surya festival for health, vitality, and radiant energy.", "recommended_mukhi": "12"},
+    "Magha Purnima": {"description": "Magha Purnima is the full moon of Magha, considered highly meritorious for holy dips, charity, and Satyanarayan puja.", "why_it_matters": "A full moon prized for sacred bathing, charity, and merit.", "recommended_mukhi": "10"},
+    "Mauni Amavasya": {"description": "Mauni Amavasya is the new moon of Magha observed in silence (mauna), with holy river baths — the most sacred bathing day of the Kumbh.", "why_it_matters": "The holiest bathing day — silence, sacred dips, and inner stillness.", "recommended_mukhi": None},
+
+    # ---- Phalguna ----
+    "Maha Shivaratri": {"description": "Maha Shivaratri, 'the Great Night of Shiva,' is the most important Shaivite festival. Devotees observe night-long vigil, fasting, and continuous Shiva worship with bilva, milk, and Om Namah Shivaya.", "why_it_matters": "Shiva's greatest night — night-long worship for liberation and inner awakening.", "recommended_mukhi": "1"},
+    "Holika Dahan": {"description": "Holika Dahan is the eve of Holi when bonfires are lit to celebrate the burning of Holika and the triumph of devotion over evil.", "why_it_matters": "The bonfire of good over evil, on the eve of Holi.", "recommended_mukhi": None},
+    "Holi": {"description": "Holi is the festival of colours marking the arrival of spring and the victory of good over evil, celebrated with colours, sweets, and joy.", "why_it_matters": "The festival of colours — joy, renewal, and the win of good over evil.", "recommended_mukhi": None},
+    "Rang Panchami": {"description": "Rang Panchami, observed five days after Holi in some regions, is a day of colour-play believed to invoke divine energies.", "why_it_matters": "A second day of colour, invoking divine vibrancy.", "recommended_mukhi": None},
+
+    # ---- Chaitra ----
+    "Chaitra Navratri Begins": {"description": "Chaitra Navratri begins the nine-day worship of Goddess Durga's nine forms in spring, often culminating in Rama Navami.", "why_it_matters": "Nine nights of Shakti worship begin — strength, protection, and renewal.", "recommended_mukhi": "9"},
+    "Gudi Padwa": {"description": "Gudi Padwa is the Marathi New Year, marked by raising the auspicious 'gudi' flag for prosperity and victory.", "why_it_matters": "The Marathi New Year — a fresh start raised on the gudi.", "recommended_mukhi": None},
+    "Ugadi": {"description": "Ugadi is the New Year for Andhra, Karnataka, and Telangana, welcomed with the six-flavoured Ugadi pachadi symbolising life's blend of experiences.", "why_it_matters": "A South Indian New Year — embracing all of life's flavours.", "recommended_mukhi": None},
+    "Rama Navami": {"description": "Rama Navami celebrates the birth of Lord Rama, the seventh avatar of Vishnu, with Ramayana recitals, bhajans, and fasting.", "why_it_matters": "Lord Rama's birth — dharma, righteousness, and devotion.", "recommended_mukhi": "10"},
+    "Chaitra Purnima": {"description": "Chaitra Purnima is the first full moon of the Hindu lunar year, sacred to Hanuman and Chitragupta.", "why_it_matters": "The year's first full moon — devotion to Hanuman and gratitude.", "recommended_mukhi": "11"},
+    "Hanuman Jayanti": {"description": "Hanuman Jayanti celebrates the birth of Lord Hanuman, the embodiment of strength, devotion, and selfless service. Devotees recite the Hanuman Chalisa and offer sindoor.", "why_it_matters": "Hanuman's birth — for courage, strength, and protection from adversity.", "recommended_mukhi": "11"},
+
+    # ---- Vaishakha ----
+    "Akshaya Tritiya": {"description": "Akshaya Tritiya is one of the most auspicious days of the year — 'akshaya' means never-diminishing. Any venture, investment, or charity begun today is believed to grow perpetually. Gold buying is traditional.", "why_it_matters": "The day of never-ending prosperity — ideal to invest, buy gold, or begin anew.", "recommended_mukhi": "7"},
+    "Parashurama Jayanti": {"description": "Parashurama Jayanti marks the birth of Lord Parashurama, the sixth avatar of Vishnu, often coinciding with Akshaya Tritiya.", "why_it_matters": "The birth of Vishnu's warrior-sage avatar.", "recommended_mukhi": "10"},
+    "Narasimha Jayanti": {"description": "Narasimha Jayanti celebrates Vishnu's fierce half-man, half-lion avatar who appeared to protect his devotee Prahlada and destroy evil.", "why_it_matters": "Vishnu's fierce protector form — for courage and removal of fear.", "recommended_mukhi": "10"},
+    "Buddha Purnima (Vesak)": {"description": "Buddha Purnima marks the birth, enlightenment, and parinirvana of Gautama Buddha — all said to fall on this full moon. A day of meditation, compassion, and charity.", "why_it_matters": "The Buddha's day — meditation, compassion, and inner peace.", "recommended_mukhi": None},
+    "Sita Navami": {"description": "Sita Navami (Janaki Navami) celebrates the appearance of Goddess Sita, observed by married women for marital harmony.", "why_it_matters": "Goddess Sita's day — devotion, purity, and marital harmony.", "recommended_mukhi": None},
+
+    # ---- Jyeshtha ----
+    "Ganga Dussehra": {"description": "Ganga Dussehra celebrates the descent of the sacred river Ganga from heaven to earth. Devotees take holy dips and offer prayers, believed to wash away ten kinds of sins.", "why_it_matters": "The day Ganga descended to earth — sacred bathing that cleanses ten sins.", "recommended_mukhi": None},
+    "Nirjala Ekadashi": {"description": "Nirjala Ekadashi is the most austere of all Ekadashis, observed with a complete waterless fast. It is believed to grant the merit of all 24 Ekadashis of the year.", "why_it_matters": "The hardest Ekadashi — a waterless fast that carries the merit of all 24.", "recommended_mukhi": "10"},
+    "Vat Savitri Vrat": {"description": "Vat Savitri Vrat is observed by married women who worship the banyan tree and recall Savitri's devotion that won back her husband's life, praying for their husbands' longevity.", "why_it_matters": "A wife's vrat for her husband's long life, around the sacred banyan.", "recommended_mukhi": "2"},
+    "Shani Jayanti": {"description": "Shani Jayanti marks the birth of Lord Shani (Saturn). Devotees offer oil, black sesame, and prayers to pacify Saturn's karmic influence.", "why_it_matters": "Saturn's birthday — pacify Shani and ease karmic hardships.", "recommended_mukhi": "14"},
+    "Jyeshtha Purnima": {"description": "Jyeshtha Purnima is the full moon of Jyeshtha, associated with Vat Purnima and Vishnu worship.", "why_it_matters": "A full moon for Vishnu worship and marital wellbeing.", "recommended_mukhi": "10"},
+
+    # ---- Ashadha ----
+    "Devshayani Ekadashi (Ashadhi Ekadashi)": {"description": "Devshayani Ekadashi begins Chaturmas, the four-month period when Lord Vishnu is said to enter cosmic sleep. A major Ekadashi for fasting and Vishnu bhakti.", "why_it_matters": "Vishnu enters cosmic sleep — the start of the sacred Chaturmas.", "recommended_mukhi": "10"},
+    "Jagannath Rath Yatra": {"description": "Rath Yatra is the grand chariot festival of Lord Jagannath at Puri, when the deities are pulled through the streets on towering chariots.", "why_it_matters": "Lord Jagannath rides out — darshan that is said to liberate.", "recommended_mukhi": "10"},
+    "Guru Purnima": {"description": "Guru Purnima honours the spiritual teacher (guru) and the sage Vyasa. Disciples express gratitude and seek blessings; it is the most powerful day to begin or deepen sadhana under a guru's grace.", "why_it_matters": "The day to honour your guru — discipleship, gratitude, and spiritual initiation.", "recommended_mukhi": "5"},
+
+    # ---- Shravana ----
+    "Nag Panchami": {"description": "Nag Panchami is dedicated to the serpent gods (Nagas). Devotees offer milk and prayers for protection from snake-related fears and for family wellbeing.", "why_it_matters": "Worship of the Nagas — protection, fertility, and removal of Kaal Sarp afflictions.", "recommended_mukhi": "8"},
+    "Shravana Putrada Ekadashi": {"description": "Putrada Ekadashi is observed by couples praying for progeny and the wellbeing of children, with fasting and Vishnu worship.", "why_it_matters": "An Ekadashi for the blessing and protection of children.", "recommended_mukhi": "10"},
+    "Varalakshmi Vratam": {"description": "Varalakshmi Vratam is observed by married women worshipping Goddess Lakshmi for prosperity, health, and family wellbeing.", "why_it_matters": "Goddess Lakshmi's vrat — for prosperity and family wellbeing.", "recommended_mukhi": "7"},
+    "Raksha Bandhan": {"description": "Raksha Bandhan celebrates the bond between brothers and sisters; sisters tie a rakhi wishing protection and prosperity for their brothers.", "why_it_matters": "The sacred thread of sibling love and protection.", "recommended_mukhi": None},
+    "Shravana Somvar Vrat (Mondays)": {"description": "The Mondays of Shravana are the most sacred days for Shiva worship in the year, observed with fasting, abhishekam, and Rudri paath.", "why_it_matters": "Shravan Monday — the most powerful day of the year to worship Shiva.", "recommended_mukhi": "1"},
+    "Hariyali Teej": {"description": "Hariyali Teej welcomes the monsoon and is dedicated to Goddess Parvati, observed by women with swings, songs, and fasting for marital bliss.", "why_it_matters": "Parvati's monsoon festival — for love and marital happiness.", "recommended_mukhi": "Gauri Shankar"},
+
+    # ---- Bhadrapada ----
+    "Hartalika Teej": {"description": "Hartalika Teej is a rigorous fast observed by women for Goddess Parvati, commemorating her penance to win Lord Shiva, prayed for marital happiness.", "why_it_matters": "Parvati's vrat for an ideal union — devotion and marital bliss.", "recommended_mukhi": "Gauri Shankar"},
+    "Ganesh Chaturthi": {"description": "Ganesh Chaturthi celebrates the birth of Lord Ganesha, the remover of obstacles. Clay idols are installed and worshipped for up to ten days before immersion.", "why_it_matters": "Ganesha's birth — the supreme day to clear obstacles and begin afresh.", "recommended_mukhi": "8"},
+    "Rishi Panchami": {"description": "Rishi Panchami honours the seven great sages (Saptarishi), observed for purification and gratitude to the rishis.", "why_it_matters": "A day to honour the seven sages and seek purification.", "recommended_mukhi": None},
+    "Radha Ashtami": {"description": "Radha Ashtami celebrates the appearance of Radha, the divine consort of Krishna and embodiment of devotion.", "why_it_matters": "Radha's day — pure, selfless divine love.", "recommended_mukhi": None},
+    "Anant Chaturdashi": {"description": "Anant Chaturdashi is dedicated to Lord Vishnu as Ananta; devotees tie the sacred Anant thread, and Ganesh idols are immersed on this day.", "why_it_matters": "Worship of the infinite Vishnu — protection through the Anant sutra.", "recommended_mukhi": "10"},
+    "Krishna Janmashtami": {"description": "Janmashtami celebrates the midnight birth of Lord Krishna. Devotees fast until midnight, sing bhajans, and reenact his childhood leelas.", "why_it_matters": "Krishna's birth at midnight — devotion, joy, and divine grace.", "recommended_mukhi": "10"},
+
+    # ---- Ashwin (Navratri / Dashain) ----
+    "Mahalaya Amavasya": {"description": "Mahalaya Amavasya marks the end of Pitru Paksha and the start of Devi Paksha, the most important day for ancestor offerings (Tarpan).", "why_it_matters": "The supreme day for ancestor tarpan, on the eve of Navratri.", "recommended_mukhi": None},
+    "Navratri Begins": {"description": "Sharad Navratri begins the nine-night worship of Goddess Durga in her nine forms, the year's greatest celebration of Shakti.", "why_it_matters": "Nine nights of the Goddess begin — Shakti, victory, and transformation.", "recommended_mukhi": "9"},
+    "Durga Ashtami": {"description": "Durga Ashtami (Maha Ashtami) is the most powerful day of Navratri, when Goddess Durga's fierce energy is worshipped with Kanya puja and special havan.", "why_it_matters": "Navratri's most powerful day — Durga's fierce, protective Shakti.", "recommended_mukhi": "9"},
+    "Mahanavami": {"description": "Mahanavami is the ninth day of Navratri, completing the Goddess worship with Ayudha puja and grand havan before Vijayadashami.", "why_it_matters": "The culmination of Navratri — victory of the Goddess.", "recommended_mukhi": "9"},
+    "Dussehra (Vijayadashami)": {"description": "Vijayadashami celebrates Rama's victory over Ravana and Durga's over Mahishasura — the triumph of good over evil. Beginning new learning or ventures today is highly auspicious.", "why_it_matters": "The day of victory — the most auspicious time to begin anything new.", "recommended_mukhi": "9"},
+    "Sharad Purnima (Kojagrat Brata)": {"description": "Sharad Purnima is the harvest full moon when the moon's rays are believed to shower nectar (amrit). Kheer is left under the moonlight and Lakshmi is worshipped through the night.", "why_it_matters": "The nectar full moon — Lakshmi's blessings and healing moonlight.", "recommended_mukhi": "7"},
+    "Dashain (Ghatasthapana)": {"description": "Ghatasthapana begins Nepal's Dashain, when the sacred kalash is established and jamara (barley) is sown to invoke Goddess Durga for the fifteen-day festival.", "why_it_matters": "Dashain begins — the kalash is set and the Goddess is invoked.", "recommended_mukhi": "9"},
+    "Dashain (Fulpati)": {"description": "Fulpati, the seventh day of Dashain, brings the sacred procession of flowers, leaves, and jamara into the home and the Dashain Ghar.", "why_it_matters": "Dashain's sacred greenery arrives — the festival intensifies.", "recommended_mukhi": "9"},
+    "Dashain (Maha Ashtami)": {"description": "Maha Ashtami is the most intense day of Dashain, when Durga's fierce form Kali is worshipped, traditionally with animal sacrifice or symbolic offerings.", "why_it_matters": "Dashain's fiercest day — the worship of Kali's power.", "recommended_mukhi": "9"},
+    "Dashain (Maha Navami)": {"description": "Maha Navami completes the Durga worship of Dashain with grand puja, including the worship of tools and instruments (Vishwakarma puja).", "why_it_matters": "The ninth day of Dashain — the culmination of Goddess worship.", "recommended_mukhi": "9"},
+    "Dashain (Vijaya Dashami / Tika)": {"description": "Vijaya Dashami is the climax of Nepal's Dashain, when elders give tika and jamara with blessings, celebrating the victory of the goddess over evil.", "why_it_matters": "Dashain's blessing day — tika, jamara, and the triumph of good.", "recommended_mukhi": "9"},
+
+    # ---- Kartika (Diwali / Tihar) ----
+    "Karwa Chauth": {"description": "Karwa Chauth is a day-long fast observed by married women, from sunrise until moonrise, for the long life and wellbeing of their husbands.", "why_it_matters": "A wife's fast for her husband's long life, broken at moonrise.", "recommended_mukhi": "2"},
+    "Dhanteras": {"description": "Dhanteras opens the Diwali festival and is dedicated to Dhanvantari and Lakshmi. Buying gold, silver, or utensils today is believed to multiply wealth.", "why_it_matters": "The wealth day of Diwali — invite Lakshmi and prosperity home.", "recommended_mukhi": "7"},
+    "Naraka Chaturdashi": {"description": "Naraka Chaturdashi (Chhoti Diwali) celebrates Krishna's slaying of the demon Narakasura; an early oil bath is said to remove impurities.", "why_it_matters": "The eve of Diwali — cleansing and the win over darkness.", "recommended_mukhi": None},
+    "Diwali (Lakshmi Puja)": {"description": "Diwali, the festival of lights, celebrates Rama's return to Ayodhya and the worship of Goddess Lakshmi for wealth and prosperity. Homes glow with diyas.", "why_it_matters": "The festival of lights — Lakshmi's night for wealth, light, and new beginnings.", "recommended_mukhi": "7"},
+    "Govardhan Puja / Annakut": {"description": "Govardhan Puja recalls Krishna lifting Mount Govardhan to shelter villagers; a mountain of food (annakut) is offered in gratitude.", "why_it_matters": "Gratitude to Krishna and nature's abundance.", "recommended_mukhi": "10"},
+    "Bhai Dooj": {"description": "Bhai Dooj celebrates the bond between brothers and sisters; sisters apply tika and pray for their brothers' long life.", "why_it_matters": "The sibling bond honoured with tika and blessings.", "recommended_mukhi": None},
+    "Chhath Puja": {"description": "Chhath Puja is a rigorous four-day festival worshipping the Sun god and Chhathi Maiya with arghya offered at sunrise and sunset, standing in water.", "why_it_matters": "Devotion to Surya — health, longevity, and family prosperity.", "recommended_mukhi": "12"},
+    "Devuthani Ekadashi (Tulsi Vivah)": {"description": "Devuthani Ekadashi marks Lord Vishnu awakening from cosmic sleep, ending Chaturmas. The auspicious wedding season and Tulsi Vivah begin.", "why_it_matters": "Vishnu awakens — Chaturmas ends and the wedding season opens.", "recommended_mukhi": "10"},
+    "Tulsi Vivah": {"description": "Tulsi Vivah ceremonially weds the Tulsi plant to Lord Vishnu (Shaligram), marking the start of the Hindu wedding season.", "why_it_matters": "The sacred Tulsi–Vishnu wedding that opens the marriage season.", "recommended_mukhi": "10"},
+    "Kartika Purnima": {"description": "Kartika Purnima (Dev Diwali) is the full moon when gods are said to descend to the Ganga; holy dips and lamp offerings bring great merit.", "why_it_matters": "The gods' festival of lights — sacred dips and luminous merit.", "recommended_mukhi": "1"},
+    "Dev Deepawali": {"description": "Dev Deepawali, the 'Diwali of the Gods,' lights thousands of lamps along the Varanasi ghats on Kartika Purnima.", "why_it_matters": "Varanasi's ghats ablaze with lamps for the gods.", "recommended_mukhi": "1"},
+    "Tihar (Lakshmi Puja)": {"description": "On the third day of Nepal's Tihar, homes are lit and decorated to welcome Goddess Lakshmi for wealth and prosperity.", "why_it_matters": "Tihar's Lakshmi night — light, wealth, and blessings.", "recommended_mukhi": "7"},
+    "Tihar (Bhai Tika)": {"description": "Bhai Tika concludes Tihar, when sisters give a seven-coloured tika and garland to brothers, praying for their long life.", "why_it_matters": "The sister–brother blessing that crowns Tihar.", "recommended_mukhi": None},
+
+    # ---- Margashirsha / Pausha ----
+    "Gita Jayanti / Mokshada Ekadashi": {"description": "Gita Jayanti marks the day Krishna delivered the Bhagavad Gita to Arjuna; Mokshada Ekadashi is observed for liberation and ancestral upliftment.", "why_it_matters": "The Gita's birthday — wisdom, dharma, and the path to liberation.", "recommended_mukhi": "10"},
+    "Vivah Panchami": {"description": "Vivah Panchami celebrates the divine wedding of Lord Rama and Goddess Sita, observed with reenactments and prayers for marital harmony.", "why_it_matters": "The Rama–Sita wedding day — devotion and marital harmony.", "recommended_mukhi": "10"},
+    "Dattatreya Jayanti": {"description": "Dattatreya Jayanti celebrates the birth of Lord Dattatreya, the combined form of Brahma, Vishnu, and Shiva, revered as the supreme guru.", "why_it_matters": "The birth of the supreme guru — Brahma, Vishnu, and Shiva as one.", "recommended_mukhi": "5"},
+}
+
+
+def _festival_copy(name, paksha, fallback_desc="", fallback_why=""):
+    """Festival-specific copy: prefer the curated FESTIVAL_CONTENT table, then any
+    description already computed for the event, then the generic guidance. Returns
+    (description, why_it_matters, recommended_mukhi)."""
+    content = FESTIVAL_CONTENT.get(name)
+    if content:
+        return (content.get("description", ""),
+                content.get("why_it_matters", ""),
+                content.get("recommended_mukhi"))
+    if fallback_desc or fallback_why:
+        return fallback_desc, fallback_why, None
+    g = _event_guidance(name, paksha)
+    return g.get("description", ""), g.get("why_it_matters", ""), None
+
+
+# --- Notification copy templates --------------------------------------------
+# Real panchanga data is injected into these, and _stable_pick rotates the
+# phrasing per day (seeded by date + nakshatra), so the text changes every day
+# and reads like a person wrote it — without an LLM in the request path.
+_TITHI_NATURE_AUSPICIOUS = {"Nanda", "Bhadra", "Jaya", "Poorna"}
+
+_DAILY_TITLE_FESTIVAL = [
+    "🪔 {festival} is here — today's practice matters",
+    "🎉 It's {festival} — don't let today's blessings pass",
+    "🙏 {festival} today — here's how to honour it",
+]
+_DAILY_TITLE_AUSPICIOUS = [
+    "✨ {tithi} today — a strong day to begin",
+    "🌟 {tithi} today: the timing is on your side",
+    "🪔 A blessed {tithi} — make today count",
+    "🌸 {tithi} today — step forward with intent",
+]
+_DAILY_TITLE_RIKTA = [
+    "🌖 {tithi} today — finish, don't start",
+    "🍃 {tithi}: a day to complete and reflect",
+    "🧘 {tithi} today — slow down and clear the deck",
+]
+_DAILY_BODY_AUSPICIOUS = [
+    "The Moon rides {nakshatra}{deity}. {window}Tap for today's Panchanga and the right moment to act →",
+    "With the Moon in {nakshatra}{deity}, today favours new work, puja, and bold moves. {window}See what's most auspicious →",
+    "{nakshatra}{deity} colours the day. {window}Open your Panchanga to time it right →",
+]
+_DAILY_BODY_RIKTA = [
+    "The Moon sits in {nakshatra}{deity}. Today rewards finishing pending work and quiet sadhana over fresh starts. See what to do — and what to avoid →",
+    "With the Moon in {nakshatra}{deity}, hold off on big launches — complete, clear, and reflect instead. {window}Tap for today's guidance →",
+]
+_FEST_BODY = [
+    "{why} Tap to see how to prepare →",
+    "{why} Here's how to get ready →",
+    "{why} Open the practice guide →",
+]
+
+
+def _best_window_phrase(amrit_windows, abhijit_window):
+    """Pick the day's headline auspicious window for the daily alert copy."""
+    if amrit_windows:
+        w = amrit_windows[0]
+        if isinstance(w, (list, tuple)) and len(w) == 2:
+            return f"Your sharpest window is {w[0]}–{w[1]} (Amrit Kaal). "
+    if abhijit_window:
+        return f"Your sharpest window is {abhijit_window} (Abhijit Muhurat). "
+    return ""
+
+
+def _countdown_title(festival, days_away):
+    if days_away == 0:
+        return f"🎉 Today is {festival}"
+    if days_away == 1:
+        return f"⏳ {festival} is tomorrow — get ready"
+    return f"⏳ {festival} is {days_away} days away"
+
+
+def _countdown_body(festival, days_away, why, mukhi):
+    """Stage-aware festival countdown copy, matching the 7 / 3 / day-of spec:
+    far out → 'how to prepare'; near (≤3 days) → the user's power Mukhi; day-of →
+    'complete practice guide'."""
+    if days_away == 0:
+        return f"Today is {festival}. {why} Here is your complete practice guide →"
+    if days_away <= 3:
+        when = "tomorrow" if days_away == 1 else f"in {days_away} days"
+        if mukhi:
+            return (f"{festival} is {when}. Your {mukhi} Mukhi is most powerful on this day — "
+                    f"prepare now →")
+        return f"{festival} is {when}. {why} Here's how to prepare →"
+    return f"{festival} is {days_away} days away. {why} Here is how to prepare →"
+
+
+def _short_why(why_it_matters, description):
+    """First, punchy sentence to drive the tap — prefer why_it_matters."""
+    text = (why_it_matters or "").strip() or (description or "").strip()
+    if not text:
+        return ""
+    # Keep it to the first sentence so the notification body stays scannable.
+    for sep in (". ", "। "):
+        if sep in text:
+            return text.split(sep)[0].strip() + "."
+    return text
+
+
+def build_notifications_block(tithi_name, tithi_nature, paksha, nakshatra_name,
+                              nakshatra_deity, festival_today, upcoming_spiritual_events,
+                              amrit_windows, abhijit_window, amanta_month,
+                              day_of_week, today_ymd):
+    """Assemble a compact, notification-ready block for the mobile app.
+
+    Purely additive — derived entirely from values already computed for the
+    /astrology response, so it adds no extra astronomical work. Copy is
+    generated from the day's real data (tithi nature, nakshatra + its deity, the
+    headline auspicious window, and each event's own why_it_matters), with
+    phrasing rotated deterministically per day — so it reads like human writing
+    and changes daily, not boilerplate.
+
+    Content hooks (blog_url, recommended_mukhi) are left null here; they are
+    populated from the API content table in a later phase (A2/A3)."""
+    seed = f"{today_ymd}|{nakshatra_name}"
+    deity = f" ({nakshatra_deity}'s star)" if nakshatra_deity else ""
+    window = _best_window_phrase(amrit_windows, abhijit_window)
+
+    # --- 1) Daily auspicious alert (click-worthy, dynamic) ---
+    real_festivals = [f for f in (festival_today or []) if f and f != "None"]
+    if real_festivals:
+        lead = real_festivals[0]
+        title = _stable_pick(_DAILY_TITLE_FESTIVAL, seed).format(festival=lead)
+    elif tithi_nature in _TITHI_NATURE_AUSPICIOUS:
+        title = _stable_pick(_DAILY_TITLE_AUSPICIOUS, seed).format(tithi=tithi_name)
+    else:  # Rikta
+        title = _stable_pick(_DAILY_TITLE_RIKTA, seed).format(tithi=tithi_name)
+
+    body_pool = _DAILY_BODY_AUSPICIOUS if tithi_nature in _TITHI_NATURE_AUSPICIOUS else _DAILY_BODY_RIKTA
+    body = _stable_pick(body_pool, seed).format(
+        nakshatra=nakshatra_name, deity=deity, window=window
+    )
+    daily_auspicious = {
+        "title": title,
+        "body": body,
+        "tithi": tithi_name,
+        "nakshatra": nakshatra_name,
+    }
+
+    # --- 2) Festival countdown (ascending by days_away, with real descriptions) ---
+    try:
+        today_date = datetime.strptime(today_ymd, "%Y-%m-%d").date()
+    except Exception:
+        today_date = None
+    countdown = []
+    # Day-of (0 days): today's real festivals → festival-specific copy.
+    for fest in real_festivals:
+        desc, why_full, mukhi = _festival_copy(fest, paksha)
+        why = _short_why(why_full, desc)
+        countdown.append({
+            "festival": fest,
+            "festival_key": _event_key(fest),
+            "days_away": 0,
+            "date": today_ymd,
+            "title": _countdown_title(fest, 0),
+            "body": _countdown_body(fest, 0, why, mukhi),
+            "description": desc,
+            "blog_url": None,
+            "recommended_mukhi": mukhi,
+        })
+    # Upcoming festivals/events within the existing scan window.
+    for ev in (upcoming_spiritual_events or []):
+        name = (ev or {}).get("event")
+        date_str = (ev or {}).get("date")
+        if not name or name == "None" or not date_str or today_date is None:
+            continue
+        try:
+            d = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except Exception:
+            continue
+        days_away = (d - today_date).days
+        if days_away <= 0:
+            continue
+        # Prefer curated festival copy; fall back to the event's own guidance text.
+        desc, why_full, mukhi = _festival_copy(
+            name, ev.get("paksha") or paksha,
+            fallback_desc=ev.get("description", ""),
+            fallback_why=ev.get("why_it_matters", ""),
+        )
+        why = _short_why(why_full, desc)
+        countdown.append({
+            "festival": name,
+            "festival_key": _event_key(name),
+            "days_away": days_away,
+            "date": date_str,
+            "title": _countdown_title(name, days_away),
+            "body": _countdown_body(name, days_away, why, mukhi),
+            "description": desc,
+            "blog_url": None,
+            "recommended_mukhi": mukhi,
+        })
+    # Ascending: soonest festival first.
+    countdown.sort(key=lambda c: (c["days_away"], c["festival"]))
+
+    # --- 3) Shravan month Sunday/Monday Maha Pooja alert ---
+    # maha_pooja_time / livestream_url are business content — the app substitutes
+    # them into the "[time]" / link placeholders when set.
+    shravan_event = None
+    if amanta_month and "Shravan" in str(amanta_month):
+        if day_of_week == "Sunday":
+            shravan_event = {
+                "is_shravan": True,
+                "weekday": "Sunday",
+                "type": "advance_notice",
+                "maha_pooja_time": None,
+                "livestream_url": None,
+                "notification": {
+                    "title": "🔔 Tomorrow: 21 priests chant Rudri Paath live",
+                    "body": ("Tomorrow, 21 priests will chant Rudri Paath live. Nepa "
+                             "Rudraksha's Maha Pooja begins at [time]. Set your reminder →"),
+                },
+            }
+        elif day_of_week == "Monday":
+            shravan_event = {
+                "is_shravan": True,
+                "weekday": "Monday",
+                "type": "live_now",
+                "maha_pooja_time": None,
+                "livestream_url": None,
+                "notification": {
+                    "title": "🟢 We are live now — Rudri Paath",
+                    "body": ("We are live now. 21 priests chanting Rudri Paath — Nepa "
+                             "Rudraksha Maha Pooja. Watch and receive the blessings →"),
+                },
+            }
+
+    return {
+        "daily_auspicious": daily_auspicious,
+        "festival_countdown": countdown,
+        "shravan_event": shravan_event,
     }
 
 
@@ -4113,8 +4491,15 @@ def astrology_api_view():
             response_payload, upcoming_spiritual_events, requested_rashi, person_name, birth_details, timezone_str, upcoming_poojas,
             precomputed_kundali_data=kundali_future.result(),
         )
+        notifications_block = build_notifications_block(
+            tithi_name, tithi_nature, paksha, nakshatra_name, nakshatra_deity,
+            festival_today, upcoming_spiritual_events,
+            amrit_windows, f"{abhijit_start.strftime('%I:%M %p')}–{abhijit_end.strftime('%I:%M %p')}",
+            amanta_month, now_local.strftime("%A"), date_ymd,
+        )
         response_payload = order_day_payload(response_payload)
         response_payload["app_response"] = app_response
+        response_payload["notifications"] = notifications_block
         return jsonify(response_payload)
 
     except Exception as e:
@@ -4261,6 +4646,147 @@ def monthly_panchanga_api():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
+@app.route("/panchanga-range", methods=["POST"])
+def panchanga_range_api():
+    """Panchanga for an inclusive date range (start_date..end_date) at given
+    coordinates. Same per-day shape as /monthly-panchanga, but for an arbitrary
+    range that may span multiple months."""
+    try:
+        data = request.get_json(force=True)
+        latitude = float(data.get("latitude"))
+        longitude = float(data.get("longitude"))
+        month_system = (data.get("month_system") or "both").strip().lower()
+        requested_rashi = data.get("rashi")
+        person_name = data.get("name")
+        birth_details = {
+            "date_of_birth": data.get("date_of_birth"),
+            "time_of_birth": data.get("time_of_birth"),
+            "birth_latitude": data.get("birth_latitude"),
+            "birth_longitude": data.get("birth_longitude"),
+            "birth_timezone": data.get("birth_timezone"),
+        }
+
+        if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+            return jsonify({"error": "Invalid latitude or longitude."}), 400
+
+        start_raw = str(data.get("start_date") or "").strip()
+        end_raw = str(data.get("end_date") or "").strip()
+        try:
+            start_date = datetime.strptime(start_raw, "%Y-%m-%d").date()
+            end_date = datetime.strptime(end_raw, "%Y-%m-%d").date()
+        except Exception:
+            return jsonify({"error": "start_date and end_date are required in YYYY-MM-DD format."}), 400
+        if end_date < start_date:
+            return jsonify({"error": "end_date must be on or after start_date."}), 400
+        if not (1900 <= start_date.year <= 2100 and 1900 <= end_date.year <= 2100):
+            return jsonify({"error": "Dates must be between years 1900 and 2100."}), 400
+        MAX_RANGE_DAYS = 366
+        total_days = (end_date - start_date).days + 1
+        if total_days > MAX_RANGE_DAYS:
+            return jsonify({"error": f"Date range too large (max {MAX_RANGE_DAYS} days)."}), 400
+
+        # Non-personalized requests are deterministic for (request body, UTC day):
+        # serve an identical cached response and skip the full-range compute.
+        cacheable = not _request_has_birth_details(data)
+        cache_key = _response_cache_key("/panchanga-range", data) if cacheable else None
+        if cache_key is not None:
+            cached = _response_cache_get(cache_key)
+            if cached is not None:
+                return jsonify(cached)
+
+        lat_r = round_coord(latitude)
+        lon_r = round_coord(longitude)
+        timezone_str = cached_timezone_str(lat_r, lon_r)
+        if timezone_str is None:
+            return jsonify({"error": "Timezone could not be determined from the provided coordinates."}), 400
+
+        # Fetch kundali once (birth data is static across all days); overlap it with
+        # the per-month warm-up + batch compute below.
+        kundali_future = IO_EXECUTOR.submit(
+            _fetch_kundali_report, birth_details, timezone_str, person_name
+        )
+
+        # Warm + batch every (year, month) the range touches, then merge. The 7-day
+        # tail baked into each month's event/pooja precompute covers the upcoming
+        # window for days near a month boundary.
+        months = []
+        seen = set()
+        cur = start_date
+        while cur <= end_date:
+            ym = (cur.year, cur.month)
+            if ym not in seen:
+                seen.add(ym)
+                months.append(ym)
+            cur = (cur.replace(year=cur.year + 1, month=1, day=1) if cur.month == 12
+                   else cur.replace(month=cur.month + 1, day=1))
+
+        merged_batch, merged_events, merged_poojas = {}, {}, {}
+        for (y, m) in months:
+            cached_moon_phases_for_month(y, m, timezone_str)
+            py, pm = _prev_month(y, m)
+            cached_moon_phases_for_month(py, pm, timezone_str)
+            merged_batch.update(compute_month_anga_end_times_batch(y, m, timezone_str))
+            ev, pj = _precompute_month_events_and_poojas(lat_r, lon_r, timezone_str, y, m, month_system)
+            merged_events.update(ev)
+            merged_poojas.update(pj)
+
+        precomputed_kundali = kundali_future.result()
+
+        range_data = []
+        range_app_response = []
+        d = start_date
+        while d <= end_date:
+            target_date = datetime(d.year, d.month, d.day)
+            date_key = target_date.strftime("%Y-%m-%d")
+            day_data = calculate_panchanga_for_date(
+                latitude, longitude, target_date, timezone_str,
+                month_system=month_system,
+                precomputed_end_times=merged_batch.get(date_key),
+            )
+
+            gochar = day_data.get("graha_gochar")
+            day_general_horoscope = [
+                _build_real_horoscope_from_transits(r, day_data, _personalized_transits(r, gochar))
+                for r in rashi_names
+            ]
+
+            day_app_response = build_app_response(
+                day_data,
+                _slice_upcoming_spiritual_events(merged_events, target_date.date(), days_ahead=7),
+                requested_rashi,
+                person_name,
+                birth_details,
+                timezone_str,
+                _slice_upcoming_poojas(merged_poojas, target_date.date(), days_ahead=7),
+                precomputed_kundali_data=precomputed_kundali,
+                precomputed_general_horoscope=day_general_horoscope,
+            )
+            range_app_response.append({
+                "date": day_data.get("date"),
+                "day": day_data.get("day_of_week"),
+                "app_response": day_app_response,
+            })
+            range_data.append(order_day_payload(day_data))
+            d += timedelta(days=1)
+
+        response_dict = {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "latitude": latitude,
+            "longitude": longitude,
+            "timezone": timezone_str,
+            "total_days": total_days,
+            "panchanga_data": range_data,
+            "app_response": range_app_response,
+        }
+        if cache_key is not None:
+            _response_cache_put(cache_key, response_dict)
+        return jsonify(response_dict)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
 @app.route("/panchanga-date", methods=["POST"])
 def panchanga_date_api():
     """Panchanga for a single given date (day, month, year) at given coordinates."""
@@ -4353,6 +4879,634 @@ def panchanga_date_api():
         return jsonify({"error": str(e)}), 400
 
 # ============================================================
+# 14b) PERSONALIZED NOTIFICATIONS  (/notifications route — A4/A5)
+# ============================================================
+# Self-contained on Skyfield + birth details — no dependency on the external
+# kundali API. Natal Moon sign, transit ingresses, and the Vimshottari dasha are
+# all computed locally and deterministically.
+
+# Navagraha Rudraksha associations (traditional) — CONFIRM against the
+# Nepa Rudraksha catalogue before relying on these in production copy.
+PLANET_MUKHI = {
+    "Sun": "12", "Moon": "2", "Mars": "3", "Mercury": "4", "Jupiter": "5",
+    "Venus": "13", "Saturn": "14", "Rahu": "8", "Ketu": "9",
+}
+
+# Mahadasha character — one phrase per dasha lord, used in the notification body.
+DASHA_GUIDANCE = {
+    "Sun": "a period of leadership, recognition, and stepping into authority",
+    "Moon": "a period of emotional depth, nurturing, and public connection",
+    "Mars": "a period of energy, courage, and decisive action",
+    "Mercury": "a period of learning, communication, and commerce",
+    "Jupiter": "a period of growth, wisdom, and expanding good fortune",
+    "Venus": "a period of comfort, relationships, creativity, and pleasure",
+    "Saturn": "a period of discipline, hard work, and lasting, hard-won results",
+    "Rahu": "a period of ambition, sudden change, and unconventional gains",
+    "Ketu": "a period of detachment, spirituality, and turning inward",
+}
+
+# Vimshottari mahadasha sequence and lengths (years); total = 120.
+DASHA_SEQUENCE = [("Ketu", 7), ("Venus", 20), ("Sun", 6), ("Moon", 10), ("Mars", 7),
+                  ("Rahu", 18), ("Jupiter", 16), ("Saturn", 19), ("Mercury", 17)]
+_DASHA_YEARS = dict(DASHA_SEQUENCE)
+_DASHA_ORDER = [p for p, _ in DASHA_SEQUENCE]
+_DASHA_YEAR_DAYS = 365.2425
+
+# Slow movers only — fast planets (Sun/Moon/Mercury/Venus) change sign too often
+# to be a "significant transit beginning".
+_SIGNIFICANT_TRANSIT_PLANETS = ["Mars", "Jupiter", "Saturn", "Rahu", "Ketu"]
+
+
+def _natal_chart_basics(birth_details, fallback_tz_name):
+    """Compute natal Moon position locally from birth details. Returns None if
+    required birth details are missing/invalid."""
+    required = ["date_of_birth", "time_of_birth", "birth_latitude", "birth_longitude"]
+    if not birth_details or any(birth_details.get(k) in (None, "") for k in required):
+        return None
+    dob = str(birth_details["date_of_birth"]).strip()
+    tob = str(birth_details["time_of_birth"]).strip()
+    birth_dt = None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            birth_dt = datetime.strptime(f"{dob} {tob}", fmt)
+            break
+        except Exception:
+            continue
+    if birth_dt is None:
+        return None
+    # Prefer an explicit birth_timezone; otherwise derive it from the birth
+    # coordinates (more correct than the current-location tz), then fall back.
+    tz_name = birth_details.get("birth_timezone")
+    if not tz_name:
+        try:
+            tz_name = cached_timezone_str(
+                round_coord(float(birth_details["birth_latitude"])),
+                round_coord(float(birth_details["birth_longitude"])),
+            )
+        except Exception:
+            tz_name = None
+    tz_name = tz_name or fallback_tz_name or "Asia/Kathmandu"
+    try:
+        tz = pytz.timezone(tz_name)
+    except Exception:
+        tz = pytz.timezone("Asia/Kathmandu")
+    birth_utc = tz.localize(birth_dt).astimezone(pytz.utc)
+    t_birth = TS.from_datetime(birth_utc)
+    _, moon_sid = get_sidereal_lons_geocentric(t_birth)
+    moon_sid = float(np.atleast_1d(moon_sid)[0])
+    nak_idx = int(moon_sid // NAK_DEG) % 27
+    return {
+        "moon_sid": moon_sid,
+        "moon_sign": rashi_names[int(moon_sid // 30) % 12],
+        "moon_sign_idx": int(moon_sid // 30) % 12,
+        "nak_idx": nak_idx,
+        "nak_name": nakshatras[nak_idx],
+        "nak_fraction": (moon_sid % NAK_DEG) / NAK_DEG,
+        "birth_utc": birth_utc,
+    }
+
+
+# General nature of each planet — used in the transit summary text.
+PLANET_NATURE = {
+    "Mars": "Mars embodies strength, passion, courage, and ambition. It governs aggression, drive, and the competitive spirit, often bringing sudden bursts of energy and action.",
+    "Jupiter": "Jupiter is the great benefic — the planet of wisdom, expansion, fortune, and higher knowledge. It blesses growth, optimism, learning, and dharma.",
+    "Saturn": "Saturn is the cosmic taskmaster — the planet of discipline, patience, and hard-won results. It rewards perseverance and structure while testing through delay and responsibility.",
+    "Rahu": "Rahu is the shadowy north node of ambition and obsession — worldly desire, innovation, and unconventional paths, marked by sudden rises and disruptions.",
+    "Ketu": "Ketu is the shadowy south node of detachment and liberation — spirituality, intuition, past-life karma, and letting go of the material.",
+}
+
+# Sanskrit (Vedic) names for the signs, shown alongside the English name.
+_RASHI_SANSKRIT = {
+    "Aries": "Mesha", "Taurus": "Vrishabha", "Gemini": "Mithuna", "Cancer": "Karka",
+    "Leo": "Simha", "Virgo": "Kanya", "Libra": "Tula", "Scorpio": "Vrishchika",
+    "Sagittarius": "Dhanu", "Capricorn": "Makara", "Aquarius": "Kumbha", "Pisces": "Meena",
+}
+
+
+def _sign_name(idx):
+    eng = rashi_names[idx]
+    sans = _RASHI_SANSKRIT.get(eng)
+    return f"{sans} ({eng})" if sans else eng
+
+
+def _planet_sign_idx(planet, dt):
+    return int(get_all_planet_positions(TS.from_datetime(dt))[planet]["longitude"] // 30) % 12
+
+
+def _bisect_boundary(planet, a, b):
+    """a < b with sign(a) != sign(b). Return the first datetime (≈1-day resolution)
+    where the sign equals sign(b) — i.e. the ingress instant."""
+    target = _planet_sign_idx(planet, b)
+    for _ in range(22):
+        if (b - a).total_seconds() <= 86400:
+            break
+        mid = a + (b - a) / 2
+        if _planet_sign_idx(planet, mid) == target:
+            b = mid
+        else:
+            a = mid
+    return b
+
+
+def _find_boundary(planet, start_dt, direction, max_days=1000, step=10):
+    """Find the sign-change boundary forward (+1) or backward (-1) from start_dt.
+    Coarse-steps then bisects, so retrograde motion is handled (positions are
+    sampled, not extrapolated). Returns the ingress datetime, or None."""
+    base = _planet_sign_idx(planet, start_dt)
+    prev_dt = start_dt
+    d = step
+    while d <= max_days:
+        cur_dt = start_dt + direction * timedelta(days=d)
+        if _planet_sign_idx(planet, cur_dt) != base:
+            return (_bisect_boundary(planet, prev_dt, cur_dt) if direction > 0
+                    else _bisect_boundary(planet, cur_dt, prev_dt))
+        prev_dt = cur_dt
+        d += step
+    return None
+
+
+def _transit_calendar(now_utc):
+    """Per-planet current sign, when it entered, and its next ingress. This is
+    user-INDEPENDENT (pure function of the date), so it is cached once per UTC
+    day and shared across all users. The per-user house mapping happens later."""
+    key = ("transit_cal", now_utc.strftime("%Y-%m-%d"))
+    return _scan_cache_get_or_compute(key, lambda: _transit_calendar_uncached(now_utc))
+
+
+def _transit_calendar_uncached(now_utc):
+    cal = {}
+    for p in _SIGNIFICANT_TRANSIT_PLANETS:
+        cur_idx = _planet_sign_idx(p, now_utc)
+        nb = _find_boundary(p, now_utc, +1)
+        eb = _find_boundary(p, now_utc, -1)
+        next_idx = _planet_sign_idx(p, nb + timedelta(days=1)) if nb else None
+        prev_idx = _planet_sign_idx(p, eb - timedelta(days=2)) if eb else None
+        cal[p] = {
+            "current_sign_idx": cur_idx,
+            "entered_date": eb.date().isoformat() if eb else None,
+            "prev_sign_idx": prev_idx,
+            "next_sign_idx": next_idx,
+            "next_ingress_date": nb.date().isoformat() if nb else None,
+        }
+    return cal
+
+
+def _humanize_span(a, b):
+    """Human 'X months Y days' between two date objects (a <= b)."""
+    import calendar
+    if b < a:
+        a, b = b, a
+    months = (b.year - a.year) * 12 + (b.month - a.month)
+    days = b.day - a.day
+    if days < 0:
+        months -= 1
+        pm = b.month - 1 or 12
+        py = b.year if b.month > 1 else b.year - 1
+        days += calendar.monthrange(py, pm)[1]
+    parts = []
+    if months:
+        parts.append(f"{months} month{'s' if months != 1 else ''}")
+    if days or not parts:
+        parts.append(f"{days} day{'s' if days != 1 else ''}")
+    return " and ".join(parts)
+
+
+def _pretty_date(iso_str):
+    d = datetime.strptime(iso_str, "%Y-%m-%d").date()
+    return f"{d.strftime('%B')} {d.day}, {d.year}"
+
+
+def _build_transits(natal_moon_idx, now_utc, today_date, imminent_days=45):
+    """Full current+next transit detail for each significant planet, mapped to the
+    user's houses from the natal Moon sign. `is_imminent` marks ingresses within
+    `imminent_days` — the app fires the transit notification for those."""
+    cal = _transit_calendar(now_utc)
+    out = []
+    for p in _SIGNIFICANT_TRANSIT_PLANETS:
+        info = cal.get(p) or {}
+        cur_idx = info.get("current_sign_idx")
+        if cur_idx is None:
+            continue
+        cur_house = ((cur_idx - natal_moon_idx) % 12) + 1
+        entered = info.get("entered_date")
+        next_iso = info.get("next_ingress_date")
+        next_idx = info.get("next_sign_idx")
+        next_house = ((next_idx - natal_moon_idx) % 12) + 1 if next_idx is not None else None
+
+        time_in_sign = _humanize_span(datetime.strptime(entered, "%Y-%m-%d").date(), today_date) if entered else None
+        duration_in_sign = (_humanize_span(datetime.strptime(entered, "%Y-%m-%d").date(),
+                                           datetime.strptime(next_iso, "%Y-%m-%d").date())
+                            if entered and next_iso else None)
+        days_until = (datetime.strptime(next_iso, "%Y-%m-%d").date() - today_date).days if next_iso else None
+        is_imminent = days_until is not None and 0 <= days_until <= imminent_days
+
+        # Summary in the requested narrative style.
+        summary_parts = [f"{p} is placed in the {_ordinal(cur_house)} house from your Moon sign."]
+        if entered:
+            summary_parts.append(f"{p} entered {_sign_name(cur_idx)} on {_pretty_date(entered)}.")
+        if duration_in_sign and next_iso and next_idx is not None:
+            summary_parts.append(
+                f"After {duration_in_sign} of transit in {rashi_names[cur_idx]}, "
+                f"{p} transits to {_sign_name(next_idx)} on {_pretty_date(next_iso)}.")
+        summary_parts.append(PLANET_NATURE.get(p, ""))
+        summary = " ".join(s for s in summary_parts if s)
+
+        # Effect for BOTH the current house (where it is now) and the next house
+        # (where it's heading) so the description never describes one while naming
+        # the other.
+        def _house_effect(house):
+            if house is None:
+                return None
+            return PLANET_HOUSE_INSIGHT.get((p, house)) or (
+                f"{p} {PLANET_TRANSIT_EFFECT.get(p, 'shifts the tone of this house')}, "
+                f"activating {HOUSE_THEMES.get(house, 'key life areas')}.")
+        current_effect = _house_effect(cur_house)
+        next_effect = _house_effect(next_house)
+        mukhi = PLANET_MUKHI.get(p)
+
+        # Notification body names both houses: current placement → upcoming move.
+        if next_house and next_iso:
+            notif_body = (
+                f"{p} is in your {_ordinal(cur_house)} house and on {_pretty_date(next_iso)} "
+                f"moves into your {_ordinal(next_house)} house. {next_effect} "
+                f"Strengthen {p} with your {mukhi} Mukhi. Tap to prepare →")
+            notif_title = f"🪐 {p} enters your {_ordinal(next_house)} house"
+        else:
+            notif_body = (f"{p} is transiting your {_ordinal(cur_house)} house. {current_effect} "
+                          f"Strengthen {p} with your {mukhi} Mukhi. Tap to learn more →")
+            notif_title = f"🪐 {p} in your {_ordinal(cur_house)} house"
+
+        out.append({
+            "planet": p,
+            "planet_nature": PLANET_NATURE.get(p, ""),
+            # current placement
+            "current_sign": rashi_names[cur_idx],
+            "current_sign_sanskrit": _RASHI_SANSKRIT.get(rashi_names[cur_idx]),
+            "current_house": cur_house,
+            "current_house_theme": HOUSE_THEMES.get(cur_house, "key life areas"),
+            "entered_current_sign_on": entered,
+            "time_in_current_sign": time_in_sign,
+            "duration_in_current_sign": duration_in_sign,
+            "prev_sign": rashi_names[info["prev_sign_idx"]] if info.get("prev_sign_idx") is not None else None,
+            # next transit (ingress)
+            "next_sign": rashi_names[next_idx] if next_idx is not None else None,
+            "next_sign_sanskrit": _RASHI_SANSKRIT.get(rashi_names[next_idx]) if next_idx is not None else None,
+            "next_house": next_house,
+            "next_house_theme": HOUSE_THEMES.get(next_house, "key life areas") if next_house else None,
+            "next_ingress_date": next_iso,
+            "days_until_next_ingress": days_until,
+            "is_imminent": is_imminent,
+            # guidance / content — both current and upcoming house effects
+            "current_effect": current_effect,
+            "next_effect": next_effect,
+            "recommended_mukhi": mukhi,
+            "pooja_practices": TRANSIT_POOJA_PRACTICES.get(p, {}),
+            "summary": summary,
+            "notification": {
+                "title": notif_title,
+                "body": notif_body,
+            },
+        })
+    # Only the single NEAREST upcoming transit is returned — that's the one worth
+    # a notification. (All planets are still computed/cached; we just surface one.)
+    out.sort(key=lambda x: x["days_until_next_ingress"] if x["days_until_next_ingress"] is not None else 99999)
+    return out[:1]
+
+
+def _vimshottari_periods(moon_sid, nak_idx, nak_fraction, birth_utc, now_utc):
+    """Build the Vimshottari mahadasha timeline from birth and return
+    (current_period, next_period, all_periods)."""
+    start_lord = NAKSHATRA_LORDS[nak_idx]
+    periods = []
+    cursor = birth_utc
+    # The birth mahadasha is already part-elapsed; only its balance remains.
+    first_years = _DASHA_YEARS[start_lord] * (1.0 - nak_fraction)
+    end = cursor + timedelta(days=first_years * _DASHA_YEAR_DAYS)
+    periods.append({"lord": start_lord, "start": cursor, "end": end})
+    cursor = end
+    i = _DASHA_ORDER.index(start_lord)
+    # Keep appending until at least one period STARTS after 'now' — this
+    # guarantees the period containing now (current) and the one after it (next)
+    # are both present, regardless of how long the current mahadasha runs.
+    while periods[-1]["start"] <= now_utc and len(periods) < 40:
+        i = (i + 1) % 9
+        lord = _DASHA_ORDER[i]
+        end = cursor + timedelta(days=_DASHA_YEARS[lord] * _DASHA_YEAR_DAYS)
+        periods.append({"lord": lord, "start": cursor, "end": end})
+        cursor = end
+
+    current = nxt = None
+    for j, pp in enumerate(periods):
+        if pp["start"] <= now_utc < pp["end"]:
+            current = pp
+            nxt = periods[j + 1] if j + 1 < len(periods) else None
+            break
+    return current, nxt, periods
+
+
+def _current_antardasha(maha, now_utc):
+    """Sub-period (antardasha) of the running mahadasha, proportional to 120y."""
+    if not maha:
+        return None
+    total_days = (maha["end"] - maha["start"]).total_seconds() / 86400.0
+    start_i = _DASHA_ORDER.index(maha["lord"])
+    cursor = maha["start"]
+    for k in range(9):
+        sub_lord = _DASHA_ORDER[(start_i + k) % 9]
+        sub_days = total_days * (_DASHA_YEARS[sub_lord] / 120.0)
+        end = cursor + timedelta(days=sub_days)
+        if cursor <= now_utc < end:
+            return {"lord": sub_lord, "start": cursor, "end": end}
+        cursor = end
+    return None
+
+
+def _fmt_date(dt):
+    return dt.strftime("%Y-%m-%d") if dt else None
+
+
+def _build_dasha_change(basics, now_utc, today_date):
+    current, nxt, _ = _vimshottari_periods(
+        basics["moon_sid"], basics["nak_idx"], basics["nak_fraction"],
+        basics["birth_utc"], now_utc,
+    )
+    if not current:
+        return None
+    antar = _current_antardasha(current, now_utc)
+    lord = current["lord"]
+    duration_years = round((current["end"] - current["start"]).total_seconds() / 86400.0 / _DASHA_YEAR_DAYS, 1)
+    started_today = current["start"].date() == today_date
+    days_until_next = (nxt["start"].date() - today_date).days if nxt else None
+    mukhi = PLANET_MUKHI.get(lord)
+    guidance = DASHA_GUIDANCE.get(lord, "a significant new life period")
+
+    # Gate: a dasha-CHANGE alert only fires when a new mahadasha has just begun
+    # (today) or begins within the next 7 days. Otherwise → no notification.
+    notify = started_today or (days_until_next is not None and 0 <= days_until_next < 7)
+    notification = None
+    if started_today:
+        notification = {
+            "title": f"✨ You have entered {lord} Mahadasha",
+            "body": (f"You have entered your {lord} Mahadasha — {guidance}. This "
+                     f"~{duration_years}-year period shapes your path ahead. Strengthen "
+                     f"{lord} with your {mukhi} Mukhi. Tap for what to expect →"),
+        }
+    elif notify and nxt:
+        nlord = nxt["lord"]
+        nmukhi = PLANET_MUKHI.get(nlord)
+        nguid = DASHA_GUIDANCE.get(nlord, "a significant new life period")
+        day_word = "tomorrow" if days_until_next == 1 else f"in {days_until_next} days"
+        notification = {
+            "title": f"✨ {nlord} Mahadasha begins {day_word}",
+            "body": (f"You are about to enter your {nlord} Mahadasha on "
+                     f"{_pretty_date(_fmt_date(nxt['start']))} — {nguid}. Prepare by "
+                     f"strengthening {nlord} with your {nmukhi} Mukhi. Tap to learn more →"),
+        }
+
+    return {
+        "notify": notify,
+        "current_mahadasha": {
+            "lord": lord,
+            "start": _fmt_date(current["start"]),
+            "end": _fmt_date(current["end"]),
+            "duration_years": duration_years,
+        },
+        "current_antardasha": ({
+            "lord": antar["lord"],
+            "start": _fmt_date(antar["start"]),
+            "end": _fmt_date(antar["end"]),
+        } if antar else None),
+        "next_mahadasha": ({"lord": nxt["lord"], "start": _fmt_date(nxt["start"])} if nxt else None),
+        "mahadasha_started_today": started_today,
+        "days_until_next_mahadasha": days_until_next,
+        "recommended_mukhi": mukhi,
+        "notification": notification,
+    }
+
+
+# ---- A6: Personal auspicious days (Tarabala + Chandrabala) -----------------
+_TARA_NAMES = ["Janma", "Sampat", "Vipat", "Kshema", "Pratyari", "Sadhaka", "Vadha", "Mitra", "Ati-Mitra"]
+_TARA_GOOD = {2, 4, 6, 8, 9}  # Sampat, Kshema, Sadhaka, Mitra, Ati-Mitra (1-indexed)
+_TARA_MEANING = {
+    "Janma": "your birth star (mixed — take care of health)",
+    "Sampat": "wealth and prosperity",
+    "Vipat": "obstacles (use caution)",
+    "Kshema": "well-being and success",
+    "Pratyari": "resistance (use caution)",
+    "Sadhaka": "accomplishment of goals",
+    "Vadha": "difficulty (use caution)",
+    "Mitra": "friendly support",
+    "Ati-Mitra": "strong support and ease",
+}
+_CHANDRA_GOOD = {1, 3, 6, 7, 10, 11}  # favourable Moon houses from janma rashi
+
+
+def _moon_nak_sign_at(dt_utc):
+    _, moon_sid = get_sidereal_lons_geocentric(TS.from_datetime(dt_utc))
+    moon_sid = float(np.atleast_1d(moon_sid)[0])
+    return int(moon_sid // NAK_DEG) % 27, int(moon_sid // 30) % 12
+
+
+def _assess_auspicious(janma_nak_idx, janma_sign_idx, dt_utc, date_obj):
+    moon_nak_idx, moon_sign_idx = _moon_nak_sign_at(dt_utc)
+    count = ((moon_nak_idx - janma_nak_idx) % 27) + 1
+    tara = ((count - 1) % 9) + 1
+    tara_name = _TARA_NAMES[tara - 1]
+    chandra_house = ((moon_sign_idx - janma_sign_idx) % 12) + 1
+    is_ausp = (tara in _TARA_GOOD) and (chandra_house in _CHANDRA_GOOD)
+    description = (
+        f"The Moon is in {nakshatras[moon_nak_idx]} — {tara_name} Tara ({_TARA_MEANING[tara_name]}) "
+        f"from your birth star — and in your {_ordinal(chandra_house)} house from the Moon. "
+        + ("A favourable day for important decisions, new beginnings, travel, or spiritual practice."
+           if is_ausp else
+           "A routine day — not specially marked for new beginnings.")
+    )
+    return {
+        "date": date_obj.isoformat(),
+        "is_auspicious": is_ausp,
+        "tara": tara_name,
+        "tara_meaning": _TARA_MEANING[tara_name],
+        "chandra_house": chandra_house,
+        "moon_nakshatra": nakshatras[moon_nak_idx],
+        "moon_sign": rashi_names[moon_sign_idx],
+        "description": description,
+    }
+
+
+def _build_auspicious_days(basics, tz, today_date, days=30):
+    jn, js = basics["nak_idx"], basics["moon_sign_idx"]
+
+    def at_noon(date_obj):
+        noon_local = tz.localize(datetime(date_obj.year, date_obj.month, date_obj.day, 12, 0))
+        return noon_local.astimezone(pytz.utc)
+
+    today = _assess_auspicious(jn, js, at_noon(today_date), today_date)
+    upcoming = []
+    for d in range(1, days + 1):
+        day = today_date + timedelta(days=d)
+        a = _assess_auspicious(jn, js, at_noon(day), day)
+        if a["is_auspicious"]:
+            upcoming.append(a)
+
+    notify = today["is_auspicious"]
+    notification = None
+    if notify:
+        notification = {
+            "title": "🌟 Today is especially auspicious for you",
+            "body": (f"{today['description']} A strong day for important decisions or starting "
+                     f"something new. Tap for guidance →"),
+        }
+    return {"notify": notify, "today": today, "upcoming": upcoming, "notification": notification}
+
+
+# ---- A7: Eclipses -----------------------------------------------------------
+def _eclipse_calendar(now_utc, days=180):
+    """Upcoming eclipses (lunar + solar) — user-INDEPENDENT, cached once per day.
+    Returns list of {type, subtype, date, sidereal_lon}."""
+    key = ("eclipses", now_utc.strftime("%Y-%m-%d"), days)
+    return _scan_cache_get_or_compute(key, lambda: _eclipse_calendar_uncached(now_utc, days))
+
+
+def _eclipse_calendar_uncached(now_utc, days):
+    from skyfield import eclipselib
+    t0 = TS.from_datetime(now_utc)
+    t1 = TS.from_datetime(now_utc + timedelta(days=days))
+    out = []
+    # Lunar eclipses (built-in).
+    try:
+        times, kinds, _details = eclipselib.lunar_eclipses(t0, t1, EPH)
+        for ti, k in zip(times, kinds):
+            _, moon_sid = get_sidereal_lons_geocentric(ti)
+            out.append({
+                "type": "Lunar",
+                "subtype": eclipselib.LUNAR_ECLIPSES[int(k)],
+                "date": ti.utc_datetime().date().isoformat(),
+                "sidereal_lon": float(np.atleast_1d(moon_sid)[0]),
+            })
+    except Exception:
+        pass
+    # Solar eclipses: a New Moon whose ecliptic latitude is near 0 (eclipse occurs
+    # somewhere on Earth). Visibility at the user's location is a future refinement.
+    try:
+        earth = geocentric_observer()
+        ph_t, ph_v = find_discrete(t0, t1, moon_phases(EPH))
+        for ti, pv in zip(ph_t, ph_v):
+            if int(pv) != 0:  # 0 = New Moon
+                continue
+            lat = earth.at(ti).observe(EPH["moon"]).apparent().frame_latlon(ecliptic_frame)[0].degrees
+            if abs(float(np.atleast_1d(lat)[0])) <= 1.5:
+                _, moon_sid = get_sidereal_lons_geocentric(ti)
+                out.append({
+                    "type": "Solar",
+                    "subtype": "Solar",
+                    "date": ti.utc_datetime().date().isoformat(),
+                    "sidereal_lon": float(np.atleast_1d(moon_sid)[0]),
+                })
+    except Exception:
+        pass
+    out.sort(key=lambda e: e["date"])
+    return out
+
+
+def _build_eclipses(basics, now_utc, today_date, days=180, notify_window=14):
+    natal_moon_idx = basics["moon_sign_idx"]
+    upcoming = []
+    for e in _eclipse_calendar(now_utc, days):
+        edate = datetime.strptime(e["date"], "%Y-%m-%d").date()
+        days_until = (edate - today_date).days
+        if days_until < 0:
+            continue
+        sign_idx = int(e["sidereal_lon"] // 30) % 12
+        house = ((sign_idx - natal_moon_idx) % 12) + 1
+        theme = HOUSE_THEMES.get(house, "key life areas")
+        desc = (f"A {e['type'].lower()} eclipse falls in {rashi_names[sign_idx]}, your "
+                f"{_ordinal(house)} house ({theme}), on {_pretty_date(e['date'])}. Eclipses are "
+                f"a time to pause — avoid starting new ventures and focus on reflection, mantra, "
+                f"and charity.")
+        upcoming.append({
+            "type": e["type"],
+            "subtype": e["subtype"],
+            "date": e["date"],
+            "sign": rashi_names[sign_idx],
+            "house": house,
+            "house_theme": theme,
+            "days_until": days_until,
+            "description": desc,
+        })
+
+    notify = bool(upcoming) and upcoming[0]["days_until"] <= notify_window
+    notification = None
+    if notify:
+        e = upcoming[0]
+        notification = {
+            "title": f"🌑 A {e['type'].lower()} eclipse affects your {_ordinal(e['house'])} house",
+            "body": f"{e['description']} Tap for what to do →",
+        }
+    return {"notify": notify, "upcoming": upcoming, "notification": notification}
+
+
+@app.route("/notifications", methods=["POST"])
+def notifications_api_view():
+    """Personalized, chart-driven notifications (A4 transits, A5 dasha).
+    Requires birth_details. A6 (auspicious days) and A7 (eclipses) are returned
+    as empty lists until those phases land. The app polls this weekly/monthly and
+    fires on ingress_date / mahadasha start / (later) eclipse dates."""
+    try:
+        data = request.get_json(force=True)
+        birth_details = {
+            "date_of_birth": data.get("date_of_birth"),
+            "time_of_birth": data.get("time_of_birth"),
+            "birth_latitude": data.get("birth_latitude"),
+            "birth_longitude": data.get("birth_longitude"),
+            "birth_timezone": data.get("birth_timezone"),
+        }
+        # Timezone for the user's LOCAL "today" (so alerts fire on the right day):
+        # explicit timezone → derived from current lat/lon → birth tz → Kathmandu.
+        tz_name = data.get("timezone")
+        if not tz_name and data.get("latitude") is not None and data.get("longitude") is not None:
+            try:
+                tz_name = cached_timezone_str(
+                    round_coord(float(data.get("latitude"))),
+                    round_coord(float(data.get("longitude"))),
+                )
+            except Exception:
+                tz_name = None
+        tz_name = tz_name or birth_details.get("birth_timezone") or "Asia/Kathmandu"
+        try:
+            tz = pytz.timezone(tz_name)
+        except Exception:
+            tz = pytz.timezone("Asia/Kathmandu")
+
+        basics = _natal_chart_basics(birth_details, tz_name)
+        if basics is None:
+            return jsonify({
+                "error": "birth_details required: date_of_birth (YYYY-MM-DD), "
+                         "time_of_birth (HH:MM), birth_latitude, birth_longitude."
+            }), 400
+
+        now_utc = datetime.now(pytz.utc)
+        today_date = now_utc.astimezone(tz).date()
+        transit_days = int(data.get("transit_days", 45))
+
+        transits = _build_transits(basics["moon_sign_idx"], now_utc, today_date, imminent_days=transit_days)
+        dasha_change = _build_dasha_change(basics, now_utc, today_date)
+        auspicious_days = _build_auspicious_days(basics, tz, today_date)
+        eclipses = _build_eclipses(basics, now_utc, today_date)
+
+        return jsonify({
+            "natal_moon_sign": basics["moon_sign"],
+            "natal_nakshatra": basics["nak_name"],
+            "transits": transits,
+            "dasha_change": dasha_change,
+            "auspicious_days": auspicious_days,
+            "eclipses": eclipses,
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+# ============================================================
 # 15) STARTUP PREWARM
 # ============================================================
 def _prewarm():
@@ -4371,6 +5525,12 @@ def _prewarm():
         tz_name = cached_timezone_str(lat_r, lon_r)
         if tz_name:
             calculate_panchanga_for_date(lat_r, lon_r, datetime.now(), tz_name)
+    except Exception:
+        pass
+    try:
+        # Warm the day's transit calendar (user-independent, ~3s) so no
+        # /notifications caller pays the boundary-search cost.
+        _transit_calendar(datetime.now(pytz.utc))
     except Exception:
         pass
 
