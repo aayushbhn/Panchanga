@@ -16,9 +16,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
-# Application code and ephemeris data
-COPY api.py .
-# COPY constants.py .
+# Application code and ephemeris data. The app is split into focused modules:
+# api.py (entry/aggregator) imports webapp, routes, views, helpers, calculations,
+# utils, and constants — all must be present in the image.
+COPY api.py webapp.py routes.py views.py helpers.py calculations.py utils.py constants.py ./
 COPY de421.bsp .
 COPY templates/ templates/
 
