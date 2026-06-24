@@ -2691,22 +2691,42 @@ def _assess_auspicious(janma_nak_idx, janma_sign_idx, dt_utc, date_obj):
     tara_name = _TARA_NAMES[tara - 1]
     chandra_house = ((moon_sign_idx - janma_sign_idx) % 12) + 1
     is_ausp = (tara in _TARA_GOOD) and (chandra_house in _CHANDRA_GOOD)
+
+    nak_name = nakshatras[moon_nak_idx]
+    tara_meaning = _TARA_MEANING[tara_name]
+    pretty = _pretty_date(date_obj.isoformat())
+    house_ord = _ordinal(chandra_house)
+    # Seed rotates phrasing per day (and per chart) while staying deterministic, so
+    # the copy reads differently every day instead of the same boilerplate.
+    seed = f"{date_obj.isoformat()}|{tara_name}|{nak_name}|{chandra_house}"
+    fields = {
+        "date": pretty, "tara": tara_name, "tara_meaning": tara_meaning,
+        "nak": nak_name, "house": house_ord,
+    }
+
+    title_pool = AUSPICIOUS_TITLES if is_ausp else ROUTINE_TITLES
+    body_pool = AUSPICIOUS_BODIES if is_ausp else ROUTINE_BODIES
+    close_pool = AUSPICIOUS_DESC_CLOSE if is_ausp else ROUTINE_DESC_CLOSE
+
     description = (
-        f"The Moon is in {nakshatras[moon_nak_idx]} — {tara_name} Tara ({_TARA_MEANING[tara_name]}) "
-        f"from your birth star — and in your {_ordinal(chandra_house)} house from the Moon. "
-        + ("A favourable day for important decisions, new beginnings, travel, or spiritual practice."
-           if is_ausp else
-           "A routine day — not specially marked for new beginnings.")
+        f"The Moon is in {nak_name} — {tara_name} Tara ({tara_meaning}) "
+        f"from your birth star — and in your {house_ord} house from the Moon. "
+        + _stable_pick(close_pool, seed + ":desc")
     )
+    notification = {
+        "title": _stable_pick(title_pool, seed + ":title").format(**fields),
+        "body": _stable_pick(body_pool, seed + ":body").format(**fields),
+    }
     return {
         "date": date_obj.isoformat(),
         "is_auspicious": is_ausp,
         "tara": tara_name,
-        "tara_meaning": _TARA_MEANING[tara_name],
+        "tara_meaning": tara_meaning,
         "chandra_house": chandra_house,
-        "moon_nakshatra": nakshatras[moon_nak_idx],
+        "moon_nakshatra": nak_name,
         "moon_sign": rashi_names[moon_sign_idx],
         "description": description,
+        "notification": notification,
     }
 
 
@@ -2726,13 +2746,8 @@ def _build_auspicious_days(basics, tz, today_date, days=30):
             upcoming.append(a)
 
     notify = today["is_auspicious"]
-    notification = None
-    if notify:
-        notification = {
-            "title": "🌟 Today is especially auspicious for you",
-            "body": (f"{today['description']} A strong day for important decisions or starting "
-                     f"something new. Tap for guidance →"),
-        }
+    # Top-level gated notification = today's own notification when today is auspicious.
+    notification = today["notification"] if notify else None
     return {"notify": notify, "today": today, "upcoming": upcoming, "notification": notification}
 
 
@@ -2800,6 +2815,8 @@ def _build_eclipses(basics, now_utc, today_date, days=180, notify_window=14):
                 f"{_ordinal(house)} house ({theme}), on {_pretty_date(e['date'])}. Eclipses are "
                 f"a time to pause — avoid starting new ventures and focus on reflection, mantra, "
                 f"and charity.")
+        seed = f"{e['date']}|{e['type']}|{house}"
+        efields = {"type": e["type"].lower(), "house": _ordinal(house), "sign": rashi_names[sign_idx]}
         upcoming.append({
             "type": e["type"],
             "subtype": e["subtype"],
@@ -2809,16 +2826,16 @@ def _build_eclipses(basics, now_utc, today_date, days=180, notify_window=14):
             "house_theme": theme,
             "days_until": days_until,
             "description": desc,
+            # Per-eclipse notification (every entry carries title + body, like transits).
+            "notification": {
+                "title": _stable_pick(ECLIPSE_TITLES, seed + ":title").format(**efields),
+                "body": f"{desc} {_stable_pick(ECLIPSE_CTAS, seed + ':cta')}",
+            },
         })
 
     notify = bool(upcoming) and upcoming[0]["days_until"] <= notify_window
-    notification = None
-    if notify:
-        e = upcoming[0]
-        notification = {
-            "title": f"🌑 A {e['type'].lower()} eclipse affects your {_ordinal(e['house'])} house",
-            "body": f"{e['description']} Tap for what to do →",
-        }
+    # Top-level gated notification = the nearest eclipse's own notification.
+    notification = upcoming[0]["notification"] if notify else None
     return {"notify": notify, "upcoming": upcoming, "notification": notification}
 
 

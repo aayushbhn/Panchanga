@@ -1453,3 +1453,74 @@ NEPALI_MONTH_THEME = {
 __all__ += [
     "SUN_RASHI_TO_NEPALI_SOLAR_MONTH", "NEPALI_MONTH_DISPLAY", "NEPALI_MONTH_THEME",
 ]
+
+
+# ============================================================
+# DYNAMIC NOTIFICATION COPY — /notifications auspicious days & eclipses
+# ============================================================
+# Rotated deterministically via _stable_pick(seed) so each day reads differently
+# (seed = date + tara + nakshatra) and weaves in the day's real data — catchy and
+# click-worthy, not boilerplate. Placeholders: {date} {tara} {tara_meaning}
+# {nak} {house} {sign} {type}.
+AUSPICIOUS_TITLES = [
+    "🌟 A golden window opens on {date}",
+    "✨ {date} is working in your favour",
+    "🪔 The stars align for you on {date}",
+    "🙏 {tara} Tara blesses you on {date}",
+    "🌸 Make {date} count — it's your day",
+    "⭐ {date}: a rare lucky day for you",
+    "🔆 Strong supportive energy on {date}",
+    "🌼 {date} favours bold, positive moves",
+]
+AUSPICIOUS_BODIES = [
+    "With the Moon in {nak} and {tara} Tara bringing {tara_meaning}, {date} is a great day to wear your Rudraksha and begin something meaningful. Tap to see why →",
+    "{tara} Tara favours {tara_meaning} today — ideal for new starts, travel, or puja, with your {house} house lit up. Don't let this window pass; tap for guidance →",
+    "The stars back you on {date}: {tara_meaning} is supported. Set an intention, wear your Rudraksha, and act. Tap to plan your day →",
+    "A rare supportive day — the Moon in {nak} lifts your {house} house. Perfect for decisions and devotion. Tap to make the most of it →",
+    "{date} carries {tara} Tara's blessing of {tara_meaning}. Begin that pending task or puja now — tap for the details →",
+    "Momentum is with you: {nak} nakshatra and {tara} Tara favour fresh starts and worship today. Tap to seize {date} →",
+]
+AUSPICIOUS_DESC_CLOSE = [
+    "A favourable day for important decisions, new beginnings, travel, or spiritual practice.",
+    "A supportive day to start ventures, travel, or deepen your sadhana.",
+    "An auspicious window for new beginnings, key decisions, and worship.",
+    "Energies favour you today — good for fresh starts, journeys, and devotion.",
+    "A strong day to act on plans, begin a puja, or wear your Rudraksha.",
+]
+ROUTINE_TITLES = [
+    "📿 {date}: a calm, steady day",
+    "🍃 Keep {date} simple",
+    "🧘 {date} favours routine over big moves",
+    "🌙 A quiet day on {date}",
+    "🪷 {date}: steady effort beats big starts",
+]
+ROUTINE_BODIES = [
+    "The Moon in {nak} keeps {date} low-key — better for routine than big launches. Tap to find your next auspicious day →",
+    "Nothing is pushing you forward today; steady work and gentle sadhana suit {date}. Tap to see your upcoming lucky days →",
+    "{date} is a quiet day — hold major starts for a stronger window. Tap to plan ahead →",
+    "A day for consistency, not bold moves. Keep your routine and tap to see when your luck turns →",
+]
+ROUTINE_DESC_CLOSE = [
+    "A routine day — not specially marked for new beginnings.",
+    "An ordinary day; better suited to steady work than big starts.",
+    "A quiet day — hold major new beginnings for a stronger window.",
+    "A low-key day; focus on routine and gentle practice.",
+]
+ECLIPSE_TITLES = [
+    "🌑 A {type} eclipse touches your {house} house",
+    "🌘 {type} eclipse in {sign} — your {house} house in focus",
+    "🌒 Eclipse alert: your {house} house comes into focus",
+    "🌑 {type} eclipse in {sign} affects your {house} house",
+]
+ECLIPSE_CTAS = [
+    "Tap for what to do →",
+    "Tap to prepare →",
+    "See how to navigate it →",
+    "Tap for remedies and timing →",
+]
+
+__all__ += [
+    "AUSPICIOUS_TITLES", "AUSPICIOUS_BODIES", "AUSPICIOUS_DESC_CLOSE",
+    "ROUTINE_TITLES", "ROUTINE_BODIES", "ROUTINE_DESC_CLOSE",
+    "ECLIPSE_TITLES", "ECLIPSE_CTAS",
+]
