@@ -2698,6 +2698,19 @@ def _assess_auspicious(janma_nak_idx, janma_sign_idx, dt_utc, date_obj):
            if is_ausp else
            "A routine day — not specially marked for new beginnings.")
     )
+    # Per-day notification copy (every entry carries title + body, like transits).
+    if is_ausp:
+        notification = {
+            "title": f"🌟 {_pretty_date(date_obj.isoformat())} is auspicious for you",
+            "body": (f"{description} A great day to wear your Rudraksha or begin something "
+                     f"meaningful. Tap for guidance →"),
+        }
+    else:
+        notification = {
+            "title": f"📿 {_pretty_date(date_obj.isoformat())} — a routine day",
+            "body": (f"{description} Keep to your regular routine and save major new starts "
+                     f"for a more favourable day. Tap to see your upcoming auspicious days →"),
+        }
     return {
         "date": date_obj.isoformat(),
         "is_auspicious": is_ausp,
@@ -2707,6 +2720,7 @@ def _assess_auspicious(janma_nak_idx, janma_sign_idx, dt_utc, date_obj):
         "moon_nakshatra": nakshatras[moon_nak_idx],
         "moon_sign": rashi_names[moon_sign_idx],
         "description": description,
+        "notification": notification,
     }
 
 
@@ -2726,13 +2740,8 @@ def _build_auspicious_days(basics, tz, today_date, days=30):
             upcoming.append(a)
 
     notify = today["is_auspicious"]
-    notification = None
-    if notify:
-        notification = {
-            "title": "🌟 Today is especially auspicious for you",
-            "body": (f"{today['description']} A strong day for important decisions or starting "
-                     f"something new. Tap for guidance →"),
-        }
+    # Top-level gated notification = today's own notification when today is auspicious.
+    notification = today["notification"] if notify else None
     return {"notify": notify, "today": today, "upcoming": upcoming, "notification": notification}
 
 
@@ -2809,16 +2818,16 @@ def _build_eclipses(basics, now_utc, today_date, days=180, notify_window=14):
             "house_theme": theme,
             "days_until": days_until,
             "description": desc,
+            # Per-eclipse notification (every entry carries title + body, like transits).
+            "notification": {
+                "title": f"🌑 A {e['type'].lower()} eclipse affects your {_ordinal(house)} house",
+                "body": f"{desc} Tap for what to do →",
+            },
         })
 
     notify = bool(upcoming) and upcoming[0]["days_until"] <= notify_window
-    notification = None
-    if notify:
-        e = upcoming[0]
-        notification = {
-            "title": f"🌑 A {e['type'].lower()} eclipse affects your {_ordinal(e['house'])} house",
-            "body": f"{e['description']} Tap for what to do →",
-        }
+    # Top-level gated notification = the nearest eclipse's own notification.
+    notification = upcoming[0]["notification"] if notify else None
     return {"notify": notify, "upcoming": upcoming, "notification": notification}
 
 
