@@ -285,14 +285,34 @@ def get_vratas_for_day(tithi_name, paksha, day_of_week, nakshatra_name=None):
             out.append(x)
     return out
 
+def _calendar_pooja_why(name, deity, reason):
+    """A human, non-static 'why this pooja today' line for calendar-based poojas.
+    Rotated per (pooja + occasion) so different poojas/occasions read differently."""
+    benefit = POOJA_BENEFIT.get(name, "to seek divine blessings")
+    occasion = (reason or "this auspicious day").strip()
+    tpl = _stable_pick(POOJA_WHY_CALENDAR, f"{name}|{occasion}")
+    return tpl.format(occasion=occasion, pooja=name, deity=(deity or "the deity"), benefit=benefit)
+
+
+def _kundali_pooja_why(name, deity, reasons):
+    """A human, personalised 'why this pooja for you' line, woven from the chart-based
+    reason(s) (birthday / dosha / dasha) plus the pooja's purpose."""
+    benefit = POOJA_BENEFIT.get(name, "to seek divine blessings")
+    causes = " ".join(r for r in (reasons or []) if r).strip() or "your current chart"
+    tpl = _stable_pick(POOJA_WHY_KUNDALI, f"{name}|{causes}")
+    return tpl.format(causes=causes, pooja=name, deity=(deity or "the deity"), benefit=benefit)
+
+
 def _p(name, pid, vid, reason):
     details = POOJA_DETAILS.get(pid, {})
+    deity = details.get("deity", "")
     return {
         "name": name,
         "id": pid,
         "variant_id": vid,
         "reason": reason,
-        "deity": details.get("deity", ""),
+        "why": _calendar_pooja_why(name, deity, reason),
+        "deity": deity,
         "about": details.get("about", ""),
         "ritual_sequence": details.get("ritual_sequence", []),
     }
@@ -535,7 +555,10 @@ def get_kundali_pooja_recommendations(kundali_result, birth_details, day_data):
 
     ordered = sorted(recs.values(), key=lambda e: (e["_priority"], e["name"]))
     for e in ordered:
-        e["reason"] = " ".join(e.pop("_reasons"))
+        reasons = e.pop("_reasons")
+        e["reason"] = " ".join(reasons)
+        # Personalised human explanation (overrides the generic calendar `why` from _p).
+        e["why"] = _kundali_pooja_why(e["name"], e.get("deity", ""), reasons)
         e.pop("_priority", None)
 
     if not dob and not isinstance(kundali_result, dict):
@@ -1768,12 +1791,13 @@ def build_app_response(day_data, upcoming_spiritual_events, rashi=None, person_n
             "id": pooja.get("id"),
             "name": pooja.get("name"),
             "reason": pooja.get("reason", ""),
+            "why": pooja.get("why", ""),
             "variant_id": pooja.get("variant_id"),
             "event_context": primary_event,
             "date": day_data.get("date"),
         }
     else:
-        pooja_brief = {"id": None, "name": "None", "reason": "", "variant_id": None, "event_context": primary_event, "date": day_data.get("date")}
+        pooja_brief = {"id": None, "name": "None", "reason": "", "why": "", "variant_id": None, "event_context": primary_event, "date": day_data.get("date")}
     requested_rashi = _normalize_rashi(rashi)
     if precomputed_kundali_data is not None:
         kundali_data = precomputed_kundali_data
@@ -2916,7 +2940,8 @@ def _calendar_day_entry(lat_r, lon_r, tz_name, target, month_system, region):
     vratas = [v for v in get_vratas_for_day(tithi_dev, paksha, day_of_week, nak_name)
               if v and v != "None"]
     poojas = [
-        {"name": p.get("name"), "reason": p.get("reason"), "variant_id": p.get("variant_id")}
+        {"name": p.get("name"), "reason": p.get("reason"), "why": p.get("why"),
+         "variant_id": p.get("variant_id")}
         for p in get_poojas_for_day(tithi_number, paksha, amanta_month, day_of_week, fixed + lunar)
         if p.get("name") != "None"
     ]
