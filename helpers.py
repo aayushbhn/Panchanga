@@ -285,14 +285,34 @@ def get_vratas_for_day(tithi_name, paksha, day_of_week, nakshatra_name=None):
             out.append(x)
     return out
 
+def _calendar_pooja_why(name, deity, reason):
+    """A human, non-static 'why this pooja today' line for calendar-based poojas.
+    Rotated per (pooja + occasion) so different poojas/occasions read differently."""
+    benefit = POOJA_BENEFIT.get(name, "to seek divine blessings")
+    occasion = (reason or "this auspicious day").strip()
+    tpl = _stable_pick(POOJA_WHY_CALENDAR, f"{name}|{occasion}")
+    return tpl.format(occasion=occasion, pooja=name, deity=(deity or "the deity"), benefit=benefit)
+
+
+def _kundali_pooja_why(name, deity, reasons):
+    """A human, personalised 'why this pooja for you' line, woven from the chart-based
+    reason(s) (birthday / dosha / dasha) plus the pooja's purpose."""
+    benefit = POOJA_BENEFIT.get(name, "to seek divine blessings")
+    causes = " ".join(r for r in (reasons or []) if r).strip() or "your current chart"
+    tpl = _stable_pick(POOJA_WHY_KUNDALI, f"{name}|{causes}")
+    return tpl.format(causes=causes, pooja=name, deity=(deity or "the deity"), benefit=benefit)
+
+
 def _p(name, pid, vid, reason):
     details = POOJA_DETAILS.get(pid, {})
+    deity = details.get("deity", "")
     return {
         "name": name,
         "id": pid,
         "variant_id": vid,
         "reason": reason,
-        "deity": details.get("deity", ""),
+        "why": _calendar_pooja_why(name, deity, reason),
+        "deity": deity,
         "about": details.get("about", ""),
         "ritual_sequence": details.get("ritual_sequence", []),
     }
@@ -535,7 +555,10 @@ def get_kundali_pooja_recommendations(kundali_result, birth_details, day_data):
 
     ordered = sorted(recs.values(), key=lambda e: (e["_priority"], e["name"]))
     for e in ordered:
-        e["reason"] = " ".join(e.pop("_reasons"))
+        reasons = e.pop("_reasons")
+        e["reason"] = " ".join(reasons)
+        # Personalised human explanation (overrides the generic calendar `why` from _p).
+        e["why"] = _kundali_pooja_why(e["name"], e.get("deity", ""), reasons)
         e.pop("_priority", None)
 
     if not dob and not isinstance(kundali_result, dict):
@@ -1768,12 +1791,13 @@ def build_app_response(day_data, upcoming_spiritual_events, rashi=None, person_n
             "id": pooja.get("id"),
             "name": pooja.get("name"),
             "reason": pooja.get("reason", ""),
+            "why": pooja.get("why", ""),
             "variant_id": pooja.get("variant_id"),
             "event_context": primary_event,
             "date": day_data.get("date"),
         }
     else:
-        pooja_brief = {"id": None, "name": "None", "reason": "", "variant_id": None, "event_context": primary_event, "date": day_data.get("date")}
+        pooja_brief = {"id": None, "name": "None", "reason": "", "why": "", "variant_id": None, "event_context": primary_event, "date": day_data.get("date")}
     requested_rashi = _normalize_rashi(rashi)
     if precomputed_kundali_data is not None:
         kundali_data = precomputed_kundali_data
@@ -2691,33 +2715,39 @@ def _assess_auspicious(janma_nak_idx, janma_sign_idx, dt_utc, date_obj):
     tara_name = _TARA_NAMES[tara - 1]
     chandra_house = ((moon_sign_idx - janma_sign_idx) % 12) + 1
     is_ausp = (tara in _TARA_GOOD) and (chandra_house in _CHANDRA_GOOD)
+
+    nak_name = nakshatras[moon_nak_idx]
+    tara_meaning = _TARA_MEANING[tara_name]
+    pretty = _pretty_date(date_obj.isoformat())
+    house_ord = _ordinal(chandra_house)
+    # Seed rotates phrasing per day (and per chart) while staying deterministic, so
+    # the copy reads differently every day instead of the same boilerplate.
+    seed = f"{date_obj.isoformat()}|{tara_name}|{nak_name}|{chandra_house}"
+    fields = {
+        "date": pretty, "tara": tara_name, "tara_meaning": tara_meaning,
+        "nak": nak_name, "house": house_ord,
+    }
+
+    title_pool = AUSPICIOUS_TITLES if is_ausp else ROUTINE_TITLES
+    body_pool = AUSPICIOUS_BODIES if is_ausp else ROUTINE_BODIES
+    close_pool = AUSPICIOUS_DESC_CLOSE if is_ausp else ROUTINE_DESC_CLOSE
+
     description = (
-        f"The Moon is in {nakshatras[moon_nak_idx]} — {tara_name} Tara ({_TARA_MEANING[tara_name]}) "
-        f"from your birth star — and in your {_ordinal(chandra_house)} house from the Moon. "
-        + ("A favourable day for important decisions, new beginnings, travel, or spiritual practice."
-           if is_ausp else
-           "A routine day — not specially marked for new beginnings.")
+        f"The Moon is in {nak_name} — {tara_name} Tara ({tara_meaning}) "
+        f"from your birth star — and in your {house_ord} house from the Moon. "
+        + _stable_pick(close_pool, seed + ":desc")
     )
-    # Per-day notification copy (every entry carries title + body, like transits).
-    if is_ausp:
-        notification = {
-            "title": f"🌟 {_pretty_date(date_obj.isoformat())} is auspicious for you",
-            "body": (f"{description} A great day to wear your Rudraksha or begin something "
-                     f"meaningful. Tap for guidance →"),
-        }
-    else:
-        notification = {
-            "title": f"📿 {_pretty_date(date_obj.isoformat())} — a routine day",
-            "body": (f"{description} Keep to your regular routine and save major new starts "
-                     f"for a more favourable day. Tap to see your upcoming auspicious days →"),
-        }
+    notification = {
+        "title": _stable_pick(title_pool, seed + ":title").format(**fields),
+        "body": _stable_pick(body_pool, seed + ":body").format(**fields),
+    }
     return {
         "date": date_obj.isoformat(),
         "is_auspicious": is_ausp,
         "tara": tara_name,
-        "tara_meaning": _TARA_MEANING[tara_name],
+        "tara_meaning": tara_meaning,
         "chandra_house": chandra_house,
-        "moon_nakshatra": nakshatras[moon_nak_idx],
+        "moon_nakshatra": nak_name,
         "moon_sign": rashi_names[moon_sign_idx],
         "description": description,
         "notification": notification,
@@ -2809,6 +2839,8 @@ def _build_eclipses(basics, now_utc, today_date, days=180, notify_window=14):
                 f"{_ordinal(house)} house ({theme}), on {_pretty_date(e['date'])}. Eclipses are "
                 f"a time to pause — avoid starting new ventures and focus on reflection, mantra, "
                 f"and charity.")
+        seed = f"{e['date']}|{e['type']}|{house}"
+        efields = {"type": e["type"].lower(), "house": _ordinal(house), "sign": rashi_names[sign_idx]}
         upcoming.append({
             "type": e["type"],
             "subtype": e["subtype"],
@@ -2820,8 +2852,8 @@ def _build_eclipses(basics, now_utc, today_date, days=180, notify_window=14):
             "description": desc,
             # Per-eclipse notification (every entry carries title + body, like transits).
             "notification": {
-                "title": f"🌑 A {e['type'].lower()} eclipse affects your {_ordinal(house)} house",
-                "body": f"{desc} Tap for what to do →",
+                "title": _stable_pick(ECLIPSE_TITLES, seed + ":title").format(**efields),
+                "body": f"{desc} {_stable_pick(ECLIPSE_CTAS, seed + ':cta')}",
             },
         })
 
@@ -2908,7 +2940,8 @@ def _calendar_day_entry(lat_r, lon_r, tz_name, target, month_system, region):
     vratas = [v for v in get_vratas_for_day(tithi_dev, paksha, day_of_week, nak_name)
               if v and v != "None"]
     poojas = [
-        {"name": p.get("name"), "reason": p.get("reason"), "variant_id": p.get("variant_id")}
+        {"name": p.get("name"), "reason": p.get("reason"), "why": p.get("why"),
+         "variant_id": p.get("variant_id")}
         for p in get_poojas_for_day(tithi_number, paksha, amanta_month, day_of_week, fixed + lunar)
         if p.get("name") != "None"
     ]
