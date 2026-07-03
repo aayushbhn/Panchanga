@@ -1524,3 +1524,42 @@ __all__ += [
     "ROUTINE_TITLES", "ROUTINE_BODIES", "ROUTINE_DESC_CLOSE",
     "ECLIPSE_TITLES", "ECLIPSE_CTAS",
 ]
+
+
+# ============================================================
+# POOJA "WHY IT'S RECOMMENDED" COPY (dynamic, human text)
+# ============================================================
+# A short, deity-neutral benefit clause per pooja (reads after "...helps {benefit}").
+POOJA_BENEFIT = {
+    "Maha Shivaratri Pooja at Pashupatinath": "to seek liberation, inner transformation, and release from past karma",
+    "Masik Shivaratri Pooja at Pashupatinath": "for health, peace, and the steady removal of obstacles",
+    "Karya Siddhi Ganesh Pooja": "to clear obstacles and smooth the path before any important new beginning",
+    "Lakshmi Kuber Pooja": "to attract wealth and financial stability and clear blockages to prosperity",
+    "Rudra Abishek Pooja": "to pacify planetary afflictions and restore peace, health, and protection",
+    "Laxmi Narayan Pooja": "to invite prosperity, harmony at home, and divine grace",
+    "Shri Durga Saptshati Chandi Path": "to invoke protection, strength, and victory over difficulties",
+    "Kaal Bhairav and Shakti Maha Puja": "to seek protection from fear, hidden enemies, and negative energy",
+    "Navagraha Shanti Pooja with Hawan": "to balance and pacify all nine planets for overall well-being",
+}
+
+# Rotated per (pooja + occasion) so the explanation reads differently across poojas
+# and days. Placeholders: {occasion} {pooja} {deity} {benefit}.
+POOJA_WHY_CALENDAR = [
+    "{occasion} is an especially auspicious time to honour {deity}. The {pooja} is performed {benefit}.",
+    "Because today is {occasion}, it's a powerful window for this worship — the {pooja} is offered {benefit}.",
+    "{occasion} carries special devotional energy, which is why the {pooja} is suggested today, {benefit}.",
+    "On {occasion}, {deity} is worshipped with extra devotion, so the {pooja} is a fitting choice — performed {benefit}.",
+    "Today being {occasion} makes it ideal for the {pooja}, dedicated to {deity} {benefit}.",
+    "{occasion} is when this worship bears the most fruit. Devotees perform the {pooja} {benefit}.",
+]
+
+# Personalised (birth-chart) version. Placeholders: {causes} {pooja} {deity} {benefit}.
+POOJA_WHY_KUNDALI = [
+    "This one comes from your birth chart. {causes} Performing the {pooja} helps {benefit}.",
+    "Recommended for you personally — {causes} The {pooja} invokes {deity} {benefit}.",
+    "Your kundali points to this: {causes} That's why the {pooja} is suggested, {benefit}.",
+    "Based on your chart, {causes} The {pooja} is a meaningful choice {benefit}.",
+    "This is tailored to you — {causes} The {pooja} is offered {benefit}.",
+]
+
+__all__ += ["POOJA_BENEFIT", "POOJA_WHY_CALENDAR", "POOJA_WHY_KUNDALI"]
