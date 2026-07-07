@@ -87,6 +87,7 @@ __all__ = [
     '_vimshottari_periods',
     'build_app_response',
     'build_notifications_block',
+    'build_day_notifications',
     'calculate_panchanga_for_date',
     'check_fixed_festivals',
     'generate_daily_summary',
@@ -2017,7 +2018,7 @@ def _short_why(why_it_matters, description):
 def build_notifications_block(tithi_name, tithi_nature, paksha, nakshatra_name,
                               nakshatra_deity, festival_today, upcoming_spiritual_events,
                               amrit_windows, abhijit_window, amanta_month,
-                              day_of_week, today_ymd):
+                              day_of_week, today_ymd, significance=""):
     """Assemble a compact, notification-ready block for the mobile app.
 
     Purely additive — derived entirely from values already computed for the
@@ -2051,7 +2052,9 @@ def build_notifications_block(tithi_name, tithi_nature, paksha, nakshatra_name,
         "title": title,
         "body": body,
         "tithi": tithi_name,
+        "paksha": paksha,
         "nakshatra": nakshatra_name,
+        "significance": significance,
     }
 
     # --- 2) Festival countdown (ascending by days_away, with real descriptions) ---
@@ -2146,6 +2149,44 @@ def build_notifications_block(tithi_name, tithi_nature, paksha, nakshatra_name,
         "festival_countdown": countdown,
         "shravan_event": shravan_event,
     }
+
+
+def _strip_seconds(t):
+    """'11:42:00 AM' -> '11:42 AM' (leave anything unexpected untouched)."""
+    try:
+        clock, ampm = t.split(" ")
+        h, m, _s = clock.split(":")
+        return f"{h}:{m} {ampm}"
+    except Exception:
+        return t
+
+
+def build_day_notifications(day_data, upcoming_spiritual_events=None):
+    """Build the per-day `notifications` block (daily_auspicious + festival_countdown +
+    shravan_event) from an already-computed day panchanga dict — no extra astronomy.
+    daily_auspicious carries the day's tithi, paksha, nakshatra, and significance."""
+    amrit_windows = (day_data.get("amrit_kaal") or {}).get("windows") or []
+    abhijit_window = None
+    for m in (day_data.get("subh_muhurat") or []):
+        a = m.get("abhijit")
+        if isinstance(a, list) and len(a) == 2:
+            abhijit_window = f"{_strip_seconds(a[0])}–{_strip_seconds(a[1])}"
+            break
+    return build_notifications_block(
+        day_data.get("tithi"),
+        day_data.get("tithi_nature"),
+        day_data.get("paksha"),
+        day_data.get("nakshatra"),
+        day_data.get("nakshatra_deity"),
+        day_data.get("festival_today") or [],
+        upcoming_spiritual_events or [],
+        amrit_windows,
+        abhijit_window,
+        day_data.get("amanta_month"),
+        day_data.get("day_of_week"),
+        day_data.get("date"),
+        significance=day_data.get("significance", ""),
+    )
 
 
 # ============================================================

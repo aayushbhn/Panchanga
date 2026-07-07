@@ -280,6 +280,7 @@ def astrology_api_view():
             festival_today, upcoming_spiritual_events,
             amrit_windows, f"{abhijit_start.strftime('%I:%M %p')}–{abhijit_end.strftime('%I:%M %p')}",
             amanta_month, now_local.strftime("%A"), date_ymd,
+            significance=significance_text,
         )
         response_payload = order_day_payload(response_payload)
         response_payload["app_response"] = app_response
@@ -387,9 +388,10 @@ def monthly_panchanga_api():
                 for r in rashi_names
             ]
 
+            day_events = _slice_upcoming_spiritual_events(events_by_date, target_date.date(), days_ahead=7)
             day_app_response = build_app_response(
                 day_data,
-                _slice_upcoming_spiritual_events(events_by_date, target_date.date(), days_ahead=7),
+                day_events,
                 requested_rashi,
                 person_name,
                 birth_details,
@@ -402,6 +404,7 @@ def monthly_panchanga_api():
                 "date": day_data.get("date"),
                 "day": day_data.get("day_of_week"),
                 "app_response": day_app_response,
+                "notifications": build_day_notifications(day_data, day_events),
             })
             monthly_data.append(order_day_payload(day_data))
 
@@ -528,9 +531,10 @@ def panchanga_range_api():
                 for r in rashi_names
             ]
 
+            day_events = _slice_upcoming_spiritual_events(merged_events, target_date.date(), days_ahead=7)
             day_app_response = build_app_response(
                 day_data,
-                _slice_upcoming_spiritual_events(merged_events, target_date.date(), days_ahead=7),
+                day_events,
                 requested_rashi,
                 person_name,
                 birth_details,
@@ -543,6 +547,7 @@ def panchanga_range_api():
                 "date": day_data.get("date"),
                 "day": day_data.get("day_of_week"),
                 "app_response": day_app_response,
+                "notifications": build_day_notifications(day_data, day_events),
             })
             range_data.append(order_day_payload(day_data))
             d += timedelta(days=1)
