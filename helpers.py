@@ -851,27 +851,33 @@ def _precompute_month_events_and_poojas(lat_r, lon_r, tz_name, year, month, mont
 
     for offset in range(num_days + 7):
         target = from_date + timedelta(days=offset)
-        target_local = tz.localize(datetime(target.year, target.month, target.day, 12, 0))
-        t = TS.from_datetime(target_local.astimezone(pytz.utc))
+        date_key = target.strftime("%Y-%m-%d")
+        # UDAYA: sample the day's angas at sunrise (consistent with the day view).
+        sr_utc0, _ss0 = cached_sunrise_sunset(lat_r, lon_r, date_key, tz_name)
+        target_local = sr_utc0.astimezone(tz)
+        t = TS.from_datetime(sr_utc0)
 
         sun_sid, moon_sid = get_sidereal_lons_geocentric(t)
         sun_sid  = float(np.atleast_1d(sun_sid)[0])
         moon_sid = float(np.atleast_1d(moon_sid)[0])
         angle = (moon_sid - sun_sid) % 360.0
         tithi_number, paksha, tithi_name = calculate_tithi_and_paksha_from_angle(angle)
+        tithi_nature = TITHI_NATURE_NAMES[(tithi_number - 1) % 5]
         amanta_month_val, purnimanta_month_val = calculate_amanta_purnimanta_month_fast(
             target_local, paksha, tz_name, lat_r, lon_r
         )
         day_of_week = target_local.strftime("%A")
         nak_name = nakshatras[_to_int_scalar(nakshatra_index_at(t, moon_sid=moon_sid))]
+        yoga_name = yoga_names[_to_int_scalar(yoga_index_at(t, sun_sid=sun_sid, moon_sid=moon_sid))]
 
         fixed   = check_fixed_festivals(target)
         lunar   = get_festivals_for_day(tithi_name, paksha, amanta_month_val, purnimanta_month_val,
                                         month_system=month_system)
-        vratas  = get_vratas_for_day(tithi_name, paksha, day_of_week, nak_name)
+        solar   = extra_solar_events(lat_r, lon_r, tz_name, date_key)  # Sankranti + eclipse
+        # Month-aware so a named Ekadashi (Vaikunta/Nirjala/…) only fires in its own month.
+        vratas  = get_vratas_for_day(tithi_name, paksha, day_of_week, nak_name,
+                                     amanta_month=amanta_month_val, purnimanta_month=purnimanta_month_val)
         poojas  = get_poojas_for_day(tithi_number, paksha, amanta_month_val, day_of_week, fixed + lunar)
-
-        date_key = target.strftime("%Y-%m-%d")
 
         # compute lightweight muhurat for this day
         try:
@@ -889,14 +895,18 @@ def _precompute_month_events_and_poojas(lat_r, lon_r, tz_name, year, month, mont
             day_muhurat = []
 
         # --- spiritual events entry ---
-        festivals    = (fixed + lunar) or ["None"]
+        festivals    = (fixed + lunar + [s for s in solar if s not in (fixed + lunar)]) or ["None"]
         vratas_list  = vratas or ["None"]
-        clean_f  = _clean_event_list(festivals)
+        # Drop civil/secular days; keep only significant vratas.
+        clean_f  = [f for f in _clean_event_list(festivals) if f not in CALENDAR_SECULAR_FESTIVALS]
         clean_v  = [v for v in _clean_event_list(vratas_list) if _is_significant_vrata(v)]
-        event_titles = clean_f + clean_v
+        event_titles = list(dict.fromkeys(clean_f + clean_v))   # de-dupe, keep order
         if event_titles:
             event_title = event_titles[0]
-            guidance = _event_guidance(event_title, paksha)
+            guidance = _spiritual_guidance_for(event_title, {
+                "tithi": tithi_name, "tithi_nature": tithi_nature, "paksha": paksha,
+                "nakshatra": nak_name, "yoga": yoga_name,
+            })
             events_by_date[date_key] = {
                 "date":                  date_key,
                 "day":                   day_of_week,
@@ -1189,17 +1199,23 @@ def _dynamic_tithi_guidance(ctx):
     if nak_msg:
         desc += f" The Moon travels through {nak} Nakshatra — {nak_msg}"
 
-    # Day-specific significance: weave the ACTUAL tithi + paksha + nakshatra (+ yoga)
-    # into one sentence, so each date reads distinctly rather than as a fixed
-    # per-nature or per-paksha label.
-    if essence:
-        why = f"{tithi} in the {phase} Moon is {essence}"
-        if nak:
-            why += f", with the Moon in {nak} Nakshatra"
-        if yoga:
-            why += (f" and the auspicious {yoga} Yoga supporting the day"
-                    if yoga_ok else f" while {yoga} Yoga counsels care with major decisions")
-        why += "."
+    # Day-specific significance: start from THIS tithi's own significance (16 distinct
+    # sentences, not one of 5 nature buckets), then weave in the day's nakshatra +
+    # yoga so each date reads distinctly.
+    tithi_sig = TITHI_SIGNIFICANCE.get(tithi)
+    if tithi_sig:
+        why = tithi_sig
+        if nak and yoga:
+            why += (f" Today the Moon is in {nak} Nakshatra, under the auspicious {yoga} Yoga."
+                    if yoga_ok else
+                    f" Today the Moon is in {nak} Nakshatra, though {yoga} Yoga counsels care with major decisions.")
+        elif nak:
+            why += f" Today the Moon is in {nak} Nakshatra."
+        elif yoga:
+            why += (f" Today the auspicious {yoga} Yoga supports the day." if yoga_ok
+                    else f" Today {yoga} Yoga counsels care with major decisions.")
+    elif essence:
+        why = f"{tithi} in the {phase} Moon is {essence}."
     else:
         why = nature_sig or f"{tithi} tithi shapes the day's energy in the {phase} Moon."
 

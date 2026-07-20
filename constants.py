@@ -731,6 +731,30 @@ TITHI_PRACTICE = {
 }
 __all__ += ["TITHI_PRACTICE"]
 
+# Per-tithi significance sentence (keyed by Devanagari name). Gives each of the 16
+# tithis its OWN why_it_matters base — so days don't share one of only 5 nature
+# clauses. Woven with the day's nakshatra + yoga for daily variation.
+TITHI_SIGNIFICANCE = {
+    "प्रथमा":   "Pratipada, the first tithi (ruled by Agni/Brahma), is for kindling new beginnings and fresh resolves.",
+    "प्रतिपदा": "Pratipada, the first tithi (ruled by Agni/Brahma), is for kindling new beginnings and fresh resolves.",
+    "द्वितीया":  "Dwitiya, presided by Brahma, favours nurturing new plans, partnerships, and steady growth.",
+    "तृतीया":   "Tritiya, sacred to Gauri (Parvati), supports harmony, beauty, marital well-being, and auspicious purchases.",
+    "चतुर्थी":  "Chaturthi belongs to Lord Ganesha — ideal for removing obstacles before any new undertaking.",
+    "पञ्चमी":   "Panchami, associated with Saraswati and the Nagas, favours learning, music, the arts, and clarity of thought.",
+    "षष्ठी":    "Shashti, sacred to Kartikeya (Skanda), lends courage, discipline, health, and protection for children.",
+    "सप्तमी":   "Saptami is the Sun's tithi — a day for vitality, confidence, health, and honouring Surya.",
+    "अष्टमी":   "Ashtami carries the fierce Shakti of Durga and Shiva — for strength, protection, and inner resolve.",
+    "नवमी":     "Navami, sacred to Goddess Durga (Ambika), is for protection, valour, and victory over obstacles.",
+    "दशमी":     "Dashami, linked with Dharma and Yama, favours righteous action, consolidation, and completion.",
+    "एकादशी":   "Ekadashi is Vishnu's most sacred tithi — fasting, japa, and devotion for purity and liberation.",
+    "द्वादशी":   "Dwadashi continues Vishnu's grace — for the fast-breaking (parana), charity, and gratitude.",
+    "त्रयोदशी":  "Trayodashi, sacred to Shiva at Pradosh twilight, is for purification, health, and removing obstacles.",
+    "चतुर्दशी":  "Chaturdashi belongs to Shiva and Kali — a time for cleansing, protection, and dissolving negativity.",
+    "पूर्णिमा":  "Purnima, the full moon, peaks lunar energy — ideal for Satyanarayan puja, gratitude, charity, and abundance.",
+    "अमावस्या": "Amavasya, the new moon, is the most potent day for ancestor offerings (Pitru Tarpan) and inner reset.",
+}
+__all__ += ["TITHI_SIGNIFICANCE"]
+
 # Nakshatra pada significance
 NAKSHATRA_PADA_DESC = [
     "First pada — initiating energy; favorable for new starts and fresh intentions.",
@@ -1331,6 +1355,31 @@ FESTIVAL_CONTENT = {
     "Vivah Panchami": {"description": "Vivah Panchami celebrates the divine wedding of Lord Rama and Goddess Sita, observed with reenactments and prayers for marital harmony.", "why_it_matters": "The Rama–Sita wedding day — devotion and marital harmony.", "recommended_mukhi": "10"},
     "Dattatreya Jayanti": {"description": "Dattatreya Jayanti celebrates the birth of Lord Dattatreya, the combined form of Brahma, Vishnu, and Shiva, revered as the supreme guru.", "why_it_matters": "The birth of the supreme guru — Brahma, Vishnu, and Shiva as one.", "recommended_mukhi": "5"},
 }
+
+# Specific significance for each named Ekadashi that lacked curated copy, so
+# why_it_matters/description are unique per event instead of the generic
+# "Ekadashi supports discipline…" line. (Vishnu-linked → 5 Mukhi rudraksha.)
+FESTIVAL_CONTENT.update({
+    "Jaya Ekadashi": {"description": "Jaya Ekadashi (Magha Shukla) is believed to free beings from a ghostly (pishacha) existence and to grant liberation.", "why_it_matters": "Jaya Ekadashi frees one from lower births and negative karma, granting victory and Vishnu's grace.", "recommended_mukhi": "5"},
+    "Shattila Ekadashi": {"description": "Shattila Ekadashi (Magha Krishna) is observed with six uses of sesame (til) — in bath, food, offering, and charity — to burn away sins and poverty.", "why_it_matters": "Shattila Ekadashi's sesame charity destroys sins and removes want and poverty.", "recommended_mukhi": "5"},
+    "Varuthini Ekadashi": {"description": "Varuthini Ekadashi (Vaishakha Krishna) grants divine protection (varutha = armour) and turns misfortune into fortune.", "why_it_matters": "Varuthini Ekadashi shields the devotee like armour and brings good fortune and merit.", "recommended_mukhi": "5"},
+    "Parsva Ekadashi": {"description": "Parivartini (Parsva) Ekadashi (Bhadrapada Shukla) marks Lord Vishnu turning to His other side during His Chaturmas sleep.", "why_it_matters": "On Parivartini Ekadashi the sleeping Vishnu turns over — a potent mid-Chaturmas day for devotion.", "recommended_mukhi": "5"},
+    "Aja Ekadashi": {"description": "Aja Ekadashi (Bhadrapada Krishna) restored the fortune and family of King Harishchandra; its observance washes away grave sins.", "why_it_matters": "Aja Ekadashi removes the heaviest sins and restores lost fortune and dignity.", "recommended_mukhi": "5"},
+    "Paush Putrada Ekadashi": {"description": "Pausha Putrada Ekadashi (Pausha Shukla) is observed by couples praying for virtuous children (putra).", "why_it_matters": "Pausha Putrada Ekadashi is kept for the blessing of children and family well-being.", "recommended_mukhi": "5"},
+    "Kamada Ekadashi": {"description": "Kamada Ekadashi (Chaitra Shukla), the first Ekadashi of the lunar year, fulfils sincere desires (kama) and frees from curses.", "why_it_matters": "Kamada Ekadashi fulfils heartfelt wishes and releases one from curses and sins.", "recommended_mukhi": "5"},
+    "Papmochani Ekadashi": {"description": "Papmochani Ekadashi (Chaitra Krishna) is the 'remover of sins' — its observance dissolves even grave wrongdoing.", "why_it_matters": "Papmochani Ekadashi erases accumulated sins and purifies the mind.", "recommended_mukhi": "5"},
+    "Mohini Ekadashi": {"description": "Mohini Ekadashi (Vaishakha Shukla) frees the devotee from the web of worldly delusion (moha) and from sins.", "why_it_matters": "Mohini Ekadashi cuts through delusion and attachment, granting clarity and merit.", "recommended_mukhi": "5"},
+    "Apara Ekadashi": {"description": "Apara (Achala) Ekadashi (Jyeshtha Krishna) grants limitless (apara) merit and wealth and removes sins.", "why_it_matters": "Apara Ekadashi bestows boundless merit, reputation, and removal of sins.", "recommended_mukhi": "5"},
+    "Yogini Ekadashi": {"description": "Yogini Ekadashi (Ashadha Krishna) is said to equal feeding thousands of brahmins in merit and to cure ailments and free from sins.", "why_it_matters": "Yogini Ekadashi grants great healing merit and release from sins.", "recommended_mukhi": "5"},
+    "Kamika Ekadashi": {"description": "Kamika Ekadashi (Shravana Krishna) grants the merit of pilgrimages and washes away sins through Vishnu worship with tulsi.", "why_it_matters": "Kamika Ekadashi confers pilgrimage-level merit and cleanses sins.", "recommended_mukhi": "5"},
+    "Papankusha Ekadashi": {"description": "Papankusha Ekadashi (Ashwin Shukla) is a goad (ankusha) against sins (papa) and grants heavenly merit and liberation.", "why_it_matters": "Papankusha Ekadashi restrains sin and grants punya and liberation.", "recommended_mukhi": "5"},
+    "Indira Ekadashi": {"description": "Indira Ekadashi (Ashwin Krishna, in Pitru Paksha) is observed to liberate departed ancestors from lower realms.", "why_it_matters": "Indira Ekadashi helps free ancestors from suffering and raises them to higher realms.", "recommended_mukhi": "5"},
+    "Rama Ekadashi": {"description": "Rama Ekadashi (Kartika Krishna), just before Diwali, destroys great sins and leads the devotee toward Vaikuntha.", "why_it_matters": "Rama Ekadashi burns away grave sins and draws one to Vishnu's abode.", "recommended_mukhi": "5"},
+    "Utpanna Ekadashi": {"description": "Utpanna Ekadashi (Margashirsha Krishna) marks the appearance (utpanna) of Ekadashi Devi, who slew the demon Mura; it begins the Ekadashi vow.", "why_it_matters": "Utpanna Ekadashi celebrates the origin of Ekadashi and is ideal to begin the vrat.", "recommended_mukhi": "5"},
+    "Saphala Ekadashi": {"description": "Saphala Ekadashi (Pausha Krishna) makes one's efforts fruitful (saphala) and turns failures into success.", "why_it_matters": "Saphala Ekadashi makes endeavours bear fruit and removes obstacles to success.", "recommended_mukhi": "5"},
+    "Amalaki Ekadashi": {"description": "Amalaki Ekadashi (Phalguna Shukla) worships Lord Vishnu with the sacred amla tree for health, longevity, and liberation.", "why_it_matters": "Amalaki Ekadashi, worshipping Vishnu at the amla tree, grants health, longevity, and moksha.", "recommended_mukhi": "5"},
+    "Vijaya Ekadashi": {"description": "Vijaya Ekadashi (Phalguna Krishna) grants victory (vijaya) over enemies and obstacles — Lord Rama observed it before crossing to Lanka.", "why_it_matters": "Vijaya Ekadashi grants victory over adversaries and hard obstacles.", "recommended_mukhi": "5"},
+})
 
 
 # --- Notification copy templates --------------------------------------------
