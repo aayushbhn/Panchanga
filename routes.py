@@ -54,40 +54,85 @@ def astrology_api_view():
         now_local = datetime.now(tz)
         date_ymd = now_local.strftime("%Y-%m-%d")
 
-        # Anga end times (vectorized-safe)
-        end_times = compute_angas_end_times(lat_r, lon_r, timezone_str, date_ymd, now_local=now_local)
+        # Sunrise/Sunset (needed first: the day's angas are sampled at SUNRISE).
+        sunrise_utc, sunset_utc = cached_sunrise_sunset(lat_r, lon_r, date_ymd, timezone_str)
+        sunrise = sunrise_utc.astimezone(tz)
+        sunset  = sunset_utc.astimezone(tz)
+        weekday      = now_local.weekday()
+        next_date_ymd = (now_local.date() + timedelta(days=1)).strftime("%Y-%m-%d")
+        next_sunrise_utc, _ = cached_sunrise_sunset(lat_r, lon_r, next_date_ymd, timezone_str)
+        next_sunrise = next_sunrise_utc.astimezone(tz)
 
-        # Current angas at now (geocentric)
+        # UDAYA day angas — the tithi/nakshatra/yoga/karana that GOVERN today are
+        # those present at sunrise (the canonical Hindu rule). These are the
+        # headline values; the live "running right now" values are returned
+        # separately as current_* below so nothing is lost.
+        t_sr = TS.from_datetime(sunrise_utc)
+        sun_sid_u, moon_sid_u = get_sidereal_lons_geocentric(t_sr)
+        sun_sid_u  = float(np.atleast_1d(sun_sid_u)[0])
+        moon_sid_u = float(np.atleast_1d(moon_sid_u)[0])
+        angle_u = (moon_sid_u - sun_sid_u) % 360.0
+        tithi_number, paksha, tithi_name = calculate_tithi_and_paksha_from_angle(angle_u)
+        nak_idx        = _to_int_scalar(nakshatra_index_at(t_sr, moon_sid=moon_sid_u))
+        nakshatra_name = nakshatras[nak_idx]
+        yoga_name      = yoga_names[_to_int_scalar(yoga_index_at(t_sr, sun_sid=sun_sid_u, moon_sid=moon_sid_u))]
+        karana_name    = karana_name_from_number(_to_int_scalar(karana_index_at(t_sr, angle=angle_u)))
+        moon_sign       = rashi_names[int(moon_sid_u // 30) % 12]
+        sun_sign        = rashi_names[int(sun_sid_u  // 30) % 12]
+        ritu            = calculate_ritu(sun_sid_u)
+        tithi_nature    = TITHI_NATURE_NAMES[(tithi_number - 1) % 5]
+        nakshatra_pada  = int((moon_sid_u % NAK_DEG) / (NAK_DEG / 4)) + 1
+        nakshatra_lord  = NAKSHATRA_LORDS[nak_idx]
+        nakshatra_deity = NAKSHATRA_DEITIES[nak_idx]
+
+        # Live "now" sample — raw instantaneous angle, graha gochar, current_* block.
         t_now = TS.from_datetime(now_local.astimezone(pytz.utc))
         sun_sid, moon_sid = get_sidereal_lons_geocentric(t_now)
         sun_sid  = float(np.atleast_1d(sun_sid)[0])
         moon_sid = float(np.atleast_1d(moon_sid)[0])
-
         angle = (moon_sid - sun_sid) % 360.0
-        tithi_number, paksha, tithi_name = calculate_tithi_and_paksha_from_angle(angle)
-        nak_idx        = _to_int_scalar(nakshatra_index_at(t_now, moon_sid=moon_sid))
-        nakshatra_name = nakshatras[nak_idx]
-        yoga_name      = yoga_names[_to_int_scalar(yoga_index_at(t_now, sun_sid=sun_sid, moon_sid=moon_sid))]
-        karana_name    = karana_name_from_number(_to_int_scalar(karana_index_at(t_now, angle=angle)))
-
-        moon_sign       = rashi_names[int(moon_sid // 30) % 12]
-        sun_sign        = rashi_names[int(sun_sid  // 30) % 12]
-        ritu            = calculate_ritu(sun_sid)
-        tithi_nature    = TITHI_NATURE_NAMES[(tithi_number - 1) % 5]
-        nakshatra_pada  = int((moon_sid % NAK_DEG) / (NAK_DEG / 4)) + 1
-        nakshatra_lord  = NAKSHATRA_LORDS[nak_idx]
-        nakshatra_deity = NAKSHATRA_DEITIES[nak_idx]
         graha_gochar    = get_all_planet_positions(t_now)
 
-        weekday      = now_local.weekday()
-        next_date_ymd = (now_local.date() + timedelta(days=1)).strftime("%Y-%m-%d")
+        # Udaya windows (day anga end + what comes next) and now windows (running now).
+        udaya_windows = compute_anga_windows(lat_r, lon_r, timezone_str, date_ymd)
+        now_windows   = compute_anga_windows(lat_r, lon_r, timezone_str, date_ymd, ref_local=now_local)
+        end_times = {
+            "tithi_end":     udaya_windows["tithi"]["end"],
+            "nakshatra_end": udaya_windows["nakshatra"]["end"],
+            "yoga_end":      udaya_windows["yoga"]["end"],
+            "karana_end":    udaya_windows["karana"]["end"],
+        }
 
-        # Sunrise/Sunset, Moonrise/Moonset
-        sunrise_utc, sunset_utc = cached_sunrise_sunset(lat_r, lon_r, date_ymd, timezone_str)
-        sunrise = sunrise_utc.astimezone(tz)
-        sunset  = sunset_utc.astimezone(tz)
-        next_sunrise_utc, _ = cached_sunrise_sunset(lat_r, lon_r, next_date_ymd, timezone_str)
-        next_sunrise = next_sunrise_utc.astimezone(tz)
+        def _anga_block(win_key, kind, w):
+            seg = w[win_key]
+            idx = seg["index"]
+            if kind == "tithi":
+                name = tithi_names[idx - 1] if idx else None
+                extra = {"tithi_number": idx}
+            elif kind == "nakshatra":
+                name = nakshatras[idx] if idx is not None else None
+                extra = {}
+            elif kind == "yoga":
+                name = yoga_names[idx] if idx is not None else None
+                extra = {}
+            else:  # karana
+                name = karana_name_from_number(idx) if idx else None
+                extra = {}
+            return {kind: name, "start": format_dt_local(seg["start"]),
+                    "end": format_dt_local(seg["end"]), **extra}
+
+        current_angas = {
+            "current_tithi":     _anga_block("tithi", "tithi", now_windows),
+            "current_nakshatra": _anga_block("nakshatra", "nakshatra", now_windows),
+            "current_yoga":      _anga_block("yoga", "yoga", now_windows),
+            "current_karana":    _anga_block("karana", "karana", now_windows),
+        }
+        next_angas = {
+            "next_tithi":     _anga_block("next_tithi", "tithi", udaya_windows),
+            "next_nakshatra": _anga_block("next_nakshatra", "nakshatra", udaya_windows),
+            "next_yoga":      _anga_block("next_yoga", "yoga", udaya_windows),
+            "next_karana":    _anga_block("next_karana", "karana", udaya_windows),
+        }
 
         mr_utc, ms_utc = cached_moonrise_moonset(lat_r, lon_r, date_ymd, timezone_str)
         moonrise = mr_utc.astimezone(tz) if mr_utc else None
@@ -131,10 +176,12 @@ def astrology_api_view():
         fixed_list = check_fixed_festivals(now_local.replace(tzinfo=None))
         lunar_list = get_festivals_for_day(tithi_name, paksha, amanta_month, purnimanta_month,
                                            month_system=month_system)
-        all_festivals  = fixed_list + lunar_list
+        solar_list = extra_solar_events(lat_r, lon_r, timezone_str, date_ymd)  # Sankranti + eclipse
+        all_festivals  = fixed_list + lunar_list + [s for s in solar_list if s not in (fixed_list + lunar_list)]
         festival_today = all_festivals if all_festivals else ["None"]
 
-        vrata_today = get_vratas_for_day(tithi_name, paksha, now_local.strftime("%A"), nakshatra_name)
+        vrata_today = get_vratas_for_day(tithi_name, paksha, now_local.strftime("%A"), nakshatra_name,
+                                         amanta_month=amanta_month, purnimanta_month=purnimanta_month)
         vrata_today = vrata_today if vrata_today else ["None"]
 
         pooja_today = get_poojas_for_day(tithi_number, paksha, amanta_month,
@@ -153,10 +200,14 @@ def astrology_api_view():
             month_system=month_system
         )
 
-        nak_end_local = end_times["nakshatra_end"]
+        nak_end_local   = end_times["nakshatra_end"]
+        nak_start_local = udaya_windows["nakshatra"]["start"]
         nak_end_utc   = nak_end_local.astimezone(pytz.utc) if nak_end_local else None
         now_utc_dt    = now_local.astimezone(pytz.utc)
-        nak_start_utc = estimate_nakshatra_start_utc(moon_sid, now_utc_dt, nak_end_utc)
+        if nak_start_local is not None:
+            nak_start_utc = nak_start_local.astimezone(pytz.utc)
+        else:
+            nak_start_utc = estimate_nakshatra_start_utc(moon_sid_u, sunrise_utc, nak_end_utc)
         varjyam       = calculate_varjyam(nak_idx, nak_start_utc, nak_end_utc, tz, nakshatra_name)
 
         day_duration = (sunset - sunrise).total_seconds() / 3600
@@ -184,6 +235,16 @@ def astrology_api_view():
             "karana_end":      format_dt_local(end_times["karana_end"]),
             "yoga":            yoga_name,
             "yoga_end":        format_dt_local(end_times["yoga_end"]),
+            # --- Upcoming angas (what comes next after the current one, with times) ---
+            "next_tithi":      next_angas["next_tithi"],
+            "next_nakshatra":  next_angas["next_nakshatra"],
+            "next_yoga":       next_angas["next_yoga"],
+            "next_karana":     next_angas["next_karana"],
+            # --- Live "running right now" angas (distinct from the day's Udaya tithi) ---
+            "current_tithi":     current_angas["current_tithi"],
+            "current_nakshatra": current_angas["current_nakshatra"],
+            "current_yoga":      current_angas["current_yoga"],
+            "current_karana":    current_angas["current_karana"],
             # --- Signs & Seasons ---
             "moon_sign":  moon_sign,
             "sun_sign":   sun_sign,
@@ -280,6 +341,7 @@ def astrology_api_view():
             festival_today, upcoming_spiritual_events,
             amrit_windows, f"{abhijit_start.strftime('%I:%M %p')}–{abhijit_end.strftime('%I:%M %p')}",
             amanta_month, now_local.strftime("%A"), date_ymd,
+            significance=significance_text,
         )
         response_payload = order_day_payload(response_payload)
         response_payload["app_response"] = app_response
@@ -355,7 +417,7 @@ def monthly_panchanga_api():
         warm_month_moonrise_moonset(lat_r, lon_r, timezone_str, year, month)
 
         # Batch-compute all anga end times (4 find_discrete calls vs 30×4=120)
-        batch_end_times = compute_month_anga_end_times_batch(year, month, timezone_str)
+        batch_end_times = compute_month_anga_end_times_batch(lat_r, lon_r, year, month, timezone_str)
 
         # Resolve the kundali fetch started above (it ran during the warm-up).
         precomputed_kundali = kundali_future.result()
@@ -387,9 +449,10 @@ def monthly_panchanga_api():
                 for r in rashi_names
             ]
 
+            day_events = _slice_upcoming_spiritual_events(events_by_date, target_date.date(), days_ahead=7)
             day_app_response = build_app_response(
                 day_data,
-                _slice_upcoming_spiritual_events(events_by_date, target_date.date(), days_ahead=7),
+                day_events,
                 requested_rashi,
                 person_name,
                 birth_details,
@@ -402,6 +465,7 @@ def monthly_panchanga_api():
                 "date": day_data.get("date"),
                 "day": day_data.get("day_of_week"),
                 "app_response": day_app_response,
+                "notifications": build_day_notifications(day_data, day_events),
             })
             monthly_data.append(order_day_payload(day_data))
 
@@ -503,7 +567,7 @@ def panchanga_range_api():
             cached_moon_phases_for_month(py, pm, timezone_str)
             warm_month_sunrise_sunset(lat_r, lon_r, timezone_str, y, m)
             warm_month_moonrise_moonset(lat_r, lon_r, timezone_str, y, m)
-            merged_batch.update(compute_month_anga_end_times_batch(y, m, timezone_str))
+            merged_batch.update(compute_month_anga_end_times_batch(lat_r, lon_r, y, m, timezone_str))
             ev, pj = _precompute_month_events_and_poojas(lat_r, lon_r, timezone_str, y, m, month_system)
             merged_events.update(ev)
             merged_poojas.update(pj)
@@ -528,9 +592,10 @@ def panchanga_range_api():
                 for r in rashi_names
             ]
 
+            day_events = _slice_upcoming_spiritual_events(merged_events, target_date.date(), days_ahead=7)
             day_app_response = build_app_response(
                 day_data,
-                _slice_upcoming_spiritual_events(merged_events, target_date.date(), days_ahead=7),
+                day_events,
                 requested_rashi,
                 person_name,
                 birth_details,
@@ -543,6 +608,7 @@ def panchanga_range_api():
                 "date": day_data.get("date"),
                 "day": day_data.get("day_of_week"),
                 "app_response": day_app_response,
+                "notifications": build_day_notifications(day_data, day_events),
             })
             range_data.append(order_day_payload(day_data))
             d += timedelta(days=1)

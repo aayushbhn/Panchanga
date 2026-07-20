@@ -30,6 +30,8 @@ __all__ = [
     '_KUNDALI_CACHE',
     '_KUNDALI_CACHE_LOCK',
     '_KUNDALI_CACHE_MAX',
+    'eclipse_for_date',
+    'extra_solar_events',
     '_assess_auspicious',
     '_best_window_phrase',
     '_bisect_boundary',
@@ -87,6 +89,7 @@ __all__ = [
     '_vimshottari_periods',
     'build_app_response',
     'build_notifications_block',
+    'build_day_notifications',
     'calculate_panchanga_for_date',
     'check_fixed_festivals',
     'generate_daily_summary',
@@ -240,6 +243,42 @@ def check_fixed_festivals(current_date_naive: datetime):
             found.append(festival)
     return found
 
+
+@lru_cache(maxsize=64)
+def _eclipse_dates_for_year(year, tz_name):
+    """{local_date_str -> eclipse dict} for a whole year, computed once (one
+    moon_phases pass) instead of a per-day scan."""
+    tz = pytz.timezone(tz_name)
+    start = (tz.localize(datetime(year, 1, 1)) - timedelta(days=2)).astimezone(pytz.utc)
+    end = (tz.localize(datetime(year, 12, 31)) + timedelta(days=2)).astimezone(pytz.utc)
+    out = {}
+    for e in find_eclipses_in_range(start, end):
+        local = e["instant_utc"].astimezone(tz).date().isoformat()
+        e = dict(e)
+        e["name"] = ("Surya Grahan (Solar Eclipse)" if e["kind"] == "solar"
+                     else "Chandra Grahan (Lunar Eclipse)")
+        out[local] = e
+    return out
+
+
+def eclipse_for_date(tz_name, date_ymd):
+    """The eclipse (grahan) whose peak falls on this LOCAL date, or None."""
+    return _eclipse_dates_for_year(int(date_ymd[:4]), tz_name).get(date_ymd)
+
+
+def extra_solar_events(lat_r, lon_r, tz_name, date_ymd):
+    """Computed, non-tithi observances for a date: the Sankranti (solar ingress)
+    and any eclipse. Sankranti names that already exist as fixed-date festivals
+    (e.g. Makar Sankranti) are skipped to avoid duplication."""
+    out = []
+    sk = sankranti_for_date(lat_r, lon_r, tz_name, date_ymd)
+    if sk and "fixed_date" not in festival_mapping.get(sk, {}):
+        out.append(sk)
+    ecl = eclipse_for_date(tz_name, date_ymd)
+    if ecl:
+        out.append(ecl["name"])
+    return out
+
 def get_festivals_for_day(
     tithi_name,
     paksha,
@@ -262,17 +301,51 @@ def get_festivals_for_day(
             elif month_system == "purnimanta":
                 month_match = details["month"] == purnimanta_month
             else:
-                month_match = details["month"] in (purnimanta_month, amanta_month)
+                # "both": the stored lunar-month names follow the purnimanta
+                # convention. For Shukla Paksha amanta == purnimanta, so either
+                # matches. For Krishna Paksha they differ by one month; matching
+                # BOTH previously fired every Krishna festival twice (once on its
+                # real purnimanta date, once a fortnight later on the spurious
+                # amanta date). Match purnimanta for Krishna to keep the single
+                # correct date.
+                if paksha == "Krishna Paksha":
+                    month_match = details["month"] == purnimanta_month
+                else:
+                    month_match = details["month"] == amanta_month
             if month_match:
                 out.append(festival)
     return out
 
-def get_vratas_for_day(tithi_name, paksha, day_of_week, nakshatra_name=None):
+def get_vratas_for_day(tithi_name, paksha, day_of_week, nakshatra_name=None, solar_month=None,
+                       amanta_month=None, purnimanta_month=None):
     possible_tithis = normalize_tithi_names(tithi_name)
+    # Month-pinned vratas (named Ekadashis like Vaikunta/Nirjala, Karwa Chauth,
+    # Ahoi Ashtami, …) must only fire in their own lunar month. Previously the
+    # "month" key was ignored, so EVERY named Ekadashi matched on EVERY Ekadashi
+    # (8 names on one day). When the caller passes the lunar month(s), require the
+    # pinned month to match one of them; when not passed, keep the old behavior.
+    known_months = {m for m in (amanta_month, purnimanta_month) if m}
+
+    def month_ok(details):
+        if "month" not in details or not known_months:
+            return True
+        return details["month"] in known_months
+
     found = []
     for vrata, details in vrata_mapping.items():
+        # Solar-month + weekday vrats (e.g. Mangala Gauri = Nepali solar Shrawan +
+        # Tuesday). Only match when the caller supplies the solar month, so the
+        # plain weekday vrats below are unaffected.
+        if "solar_month" in details:
+            if (solar_month is not None
+                    and details["solar_month"] == solar_month
+                    and details.get("day_of_week") == day_of_week):
+                found.append(vrata)
+            continue
         if "tithi" in details:
-            if details["tithi"] in possible_tithis and paksha_allows(details.get("paksha", "Both"), paksha):
+            if (details["tithi"] in possible_tithis
+                    and paksha_allows(details.get("paksha", "Both"), paksha)
+                    and month_ok(details)):
                 found.append(vrata)
         if "day_of_week" in details:
             if details["day_of_week"] == day_of_week:
@@ -912,8 +985,49 @@ def _is_significant_vrata(name):
     return any(k in n for k in SIGNIFICANT_VRATA_KEYWORDS)
 
 
+# Vratas defined purely by weekday (Somvar…Ravivar) — routine, every week. They
+# should never be chosen as the day's headline spiritual event; a real festival,
+# tithi-based vrata, or the day's tithi itself is used instead.
+_WEEKDAY_ONLY_VRATAS = {
+    name for name, d in vrata_mapping.items()
+    if "day_of_week" in d and "tithi" not in d and "solar_month" not in d
+}
+
+
 def _event_guidance(event_name, paksha):
     e = (event_name or "").lower()
+    if "grahan" in e or "eclipse" in e:
+        solar = "solar" in e or "surya" in e
+        return {
+            "description": ("An eclipse (Grahan) — " + ("Surya Grahan, when the Moon hides the Sun."
+                            if solar else "Chandra Grahan, when the Earth's shadow falls on the Moon.")
+                            + " The hours around it (Sutak) are traditionally kept for prayer, japa, and "
+                              "meditation rather than worldly activity; temples close and idols are not touched."),
+            "why_it_matters": "An eclipse is a potent time for mantra, meditation, and inner purification — but not for new work, eating, or temple worship during Sutak.",
+            "who_should_use_it": "Sadhaks and devotees who want to intensify japa and meditation; everyone observing Sutak restraint.",
+            "recommended_practices": [
+                "Chant your mantra, Gayatri, or Mahamrityunjaya through the eclipse.",
+                "Take a bath after the eclipse ends and offer charity (daan).",
+                "Keep still, avoid food during Sutak, and cover/observe stored food per tradition.",
+            ],
+            "avoid_practices": [
+                "Beginning new work, travel, puja, or eating during Sutak.",
+                "Viewing a solar eclipse with the naked eye.",
+            ],
+        }
+    if "sankranti" in e:
+        return {
+            "description": ("Sankranti marks the Sun's entry into a new sidereal rashi — a solar "
+                            "turning point observed with holy bathing, charity, and Surya worship."),
+            "why_it_matters": "The solar ingress (Sankranti) is an auspicious punya-kaal for sacred bathing, daan, and honouring the Sun.",
+            "who_should_use_it": "Anyone seeking merit through charity, Surya worship, or a fresh solar-cycle start.",
+            "recommended_practices": [
+                "Offer arghya (water) to the Sun at sunrise and chant Surya mantras.",
+                "Give charity — sesame, grains, or warm clothing in winter Sankrantis.",
+                "Take a holy dip or a mindful bath before worship.",
+            ],
+            "avoid_practices": ["Idleness during the punya-kaal; postponing acts of charity."],
+        }
     if "ekadashi" in e:
         return {
             "description": "Ekadashi is the eleventh lunar day (tithi) observed twice a month — once in each paksha. It is one of the most sacred days in Vaishnava tradition, dedicated to Lord Vishnu. Devotees observe a fast from grains and lentils, engaging in prayer, scripture reading, and japa to purify the mind and accumulate spiritual merit.",
@@ -1048,6 +1162,116 @@ def _event_guidance(event_name, paksha):
     }
 
 
+# Named events keyed by keyword — for these _event_guidance already returns
+# event-specific (not paksha-generic) copy.
+_GUIDANCE_KEYWORDS = ("ekadashi", "pradosh", "ashtami", "sankashti", "chaturthi",
+                      "purnima", "amavasya", "ausi", "navaratri", "navratri",
+                      "grahan", "eclipse", "sankranti")
+
+
+def _dynamic_tithi_guidance(ctx):
+    """Compose guidance from the ACTUAL day — tithi name + nature + paksha +
+    nakshatra + yoga — instead of static paksha-only text. `ctx` is a dict with
+    tithi, tithi_nature, paksha, nakshatra, yoga (any may be missing)."""
+    tithi   = ctx.get("tithi", "") or ""
+    nature  = ctx.get("tithi_nature", "") or ""
+    paksha  = ctx.get("paksha", "") or ""
+    nak     = ctx.get("nakshatra", "") or ""
+    yoga    = ctx.get("yoga", "") or ""
+
+    nature_sig = TITHI_NATURE_SIGNIFICANCE.get(nature, "")
+    essence = TITHI_NATURE_ESSENCE.get(nature, "")
+    phase = "waxing (Shukla)" if "Shukla" in paksha else "waning (Krishna)"
+    nak_msg = messages.get(nak, "")
+    yoga_ok = YOGA_AUSPICIOUS.get(yoga, True)
+
+    desc = f"Today is {tithi} tithi ({nature}) in the {phase} Moon. {nature_sig}".strip()
+    if nak_msg:
+        desc += f" The Moon travels through {nak} Nakshatra — {nak_msg}"
+
+    # Day-specific significance: weave the ACTUAL tithi + paksha + nakshatra (+ yoga)
+    # into one sentence, so each date reads distinctly rather than as a fixed
+    # per-nature or per-paksha label.
+    if essence:
+        why = f"{tithi} in the {phase} Moon is {essence}"
+        if nak:
+            why += f", with the Moon in {nak} Nakshatra"
+        if yoga:
+            why += (f" and the auspicious {yoga} Yoga supporting the day"
+                    if yoga_ok else f" while {yoga} Yoga counsels care with major decisions")
+        why += "."
+    else:
+        why = nature_sig or f"{tithi} tithi shapes the day's energy in the {phase} Moon."
+
+    # Tithi-specific deity practices come FIRST (name the deity + the act), then the
+    # tithi-nature guidance, then a yoga note — so recommendations are concrete
+    # (e.g. Panchami → Saraswati mantra; Ekadashi → Vishnu mantra + fast).
+    recommended = list(TITHI_PRACTICE.get(ctx.get("tithi", ""), []))
+    recommended += list(TITHI_NATURE_RECOMMEND.get(nature, []))
+    avoid = list(TITHI_NATURE_AVOID.get(nature, []))
+    if yoga:
+        if yoga_ok:
+            recommended.append(f"Use the supportive {yoga} Yoga for well-intentioned actions and worship.")
+        else:
+            avoid.append(f"Beginning anything critical during {yoga} Yoga — think twice before major decisions.")
+
+    return {
+        "description": desc,
+        "why_it_matters": why,
+        "who_should_use_it": TITHI_NATURE_WHO.get(
+            nature, "Anyone wishing to align the day's activities with its natural energy."),
+        "recommended_practices": recommended or ["Offer prayer and keep the day disciplined and mindful."],
+        "avoid_practices": avoid or ["Impulsive, avoidable friction."],
+    }
+
+
+def _spiritual_guidance_for(event_title, ctx):
+    """Guidance for the day's primary event, resolved most-specific first:
+      1. keyword events (Ekadashi/Pradosh/Ashtami/…) → _event_guidance (specific);
+      2. curated per-festival copy (FESTIVAL_CONTENT) for description/why;
+      3. named-vrata significance line from vrata_mapping;
+      4. dynamic tithi guidance derived from the actual day.
+    Practices/who fall back to the dynamic set when a source lacks them, so the
+    block is never the static paksha-only text alone."""
+    e = (event_title or "").lower()
+    dyn = _dynamic_tithi_guidance(ctx)
+    matched = any(k in e for k in _GUIDANCE_KEYWORDS)
+    g = dict(_event_guidance(event_title, ctx.get("paksha"))) if matched else dict(dyn)
+
+    content = FESTIVAL_CONTENT.get(event_title)
+    if content:
+        if content.get("description"):
+            g["description"] = content["description"]
+        if content.get("why_it_matters"):
+            g["why_it_matters"] = content["why_it_matters"]
+    elif not matched:
+        # A named vrata that did NOT match a keyword (e.g. Karwa Chauth) carries only
+        # a terse significance phrase. Expand it into a full, day-specific sentence
+        # rather than emitting the bare phrase. (Keyword events already have a full
+        # sentence from _event_guidance — never overwrite that with the terse phrase.)
+        vinfo = vrata_mapping.get(event_title)
+        sig = (vinfo or {}).get("significance")
+        if sig:
+            deity = (vinfo or {}).get("deity")
+            lead = f"{event_title} honours {deity}" if deity else event_title
+            sig_clause = (sig[0].lower() + sig[1:]) if sig else sig
+            g["why_it_matters"] = f"{lead} — {sig_clause}. {dyn['why_it_matters']}"
+
+    # Guard: if why_it_matters is still a short fragment (not a sentence), fold in the
+    # day-specific line so it always reads as the significance of THIS tithi/date.
+    why = (g.get("why_it_matters") or "").strip()
+    if len(why) < 40 or not why.endswith((".", "!", "?")):
+        g["why_it_matters"] = (f"{why.rstrip('.')}. {dyn['why_it_matters']}".strip()
+                               if why else dyn["why_it_matters"])
+
+    # Ensure every field is populated (borrow from the dynamic day guidance).
+    for k in ("description", "why_it_matters", "who_should_use_it",
+              "recommended_practices", "avoid_practices"):
+        if not g.get(k):
+            g[k] = dyn[k]
+    return g
+
+
 def _spiritual_event_priority(row):
     text = " ".join([row.get("event", "")] + (row.get("all_events") or [])).lower()
     if "ekadashi" in text:
@@ -1080,14 +1304,20 @@ def _get_upcoming_spiritual_events_uncached(lat_r, lon_r, tz_name, from_date, da
     result = []
     for offset in range(1, days_ahead + 1):
         target = from_date + timedelta(days=offset)
-        target_local = tz.localize(datetime(target.year, target.month, target.day, 12, 0))
-        t = TS.from_datetime(target_local.astimezone(pytz.utc))
+        # UDAYA: sample the day's angas at sunrise, so an event lands on the same
+        # day the calendar/day view labels it (not the noon tithi).
+        sr_utc, _ss = cached_sunrise_sunset(lat_r, lon_r, target.strftime("%Y-%m-%d"), tz_name)
+        target_local = sr_utc.astimezone(tz)
+        t = TS.from_datetime(sr_utc)
 
         sun_sid, moon_sid = get_sidereal_lons_geocentric(t)
         sun_sid = float(np.atleast_1d(sun_sid)[0])
         moon_sid = float(np.atleast_1d(moon_sid)[0])
         angle = (moon_sid - sun_sid) % 360.0
         tithi_number, paksha, tithi_name = calculate_tithi_and_paksha_from_angle(angle)
+        tithi_nature = TITHI_NATURE_NAMES[(tithi_number - 1) % 5]
+        nak_name = nakshatras[_to_int_scalar(nakshatra_index_at(t, moon_sid=moon_sid))]
+        yoga_name = yoga_names[_to_int_scalar(yoga_index_at(t, sun_sid=sun_sid, moon_sid=moon_sid))]
 
         amanta_month, purnimanta_month = calculate_amanta_purnimanta_month_fast(
             target_local, paksha, tz_name, lat_r, lon_r
@@ -1095,18 +1325,30 @@ def _get_upcoming_spiritual_events_uncached(lat_r, lon_r, tz_name, from_date, da
         day_of_week = target_local.strftime("%A")
         fixed = check_fixed_festivals(target)
         lunar = get_festivals_for_day(tithi_name, paksha, amanta_month, purnimanta_month, month_system=month_system)
-        vratas = get_vratas_for_day(tithi_name, paksha, day_of_week, nakshatras[_to_int_scalar(nakshatra_index_at(t, moon_sid=moon_sid))])
-        festivals = (fixed + lunar) or ["None"]
+        solar = extra_solar_events(lat_r, lon_r, tz_name, target.strftime("%Y-%m-%d"))  # Sankranti + eclipse
+        vratas = get_vratas_for_day(tithi_name, paksha, day_of_week, nak_name,
+                                    amanta_month=amanta_month, purnimanta_month=purnimanta_month)
+        festivals = (fixed + lunar + [s for s in solar if s not in (fixed + lunar)]) or ["None"]
         vratas = vratas or ["None"]
         poojas = get_poojas_for_day(tithi_number, paksha, amanta_month, day_of_week, fixed + lunar)
 
-        clean_festivals = _clean_event_list(festivals)
+        # Spiritual feed: drop civil/secular days (Independence Day, Republic Day,
+        # Christmas, etc.) — they are not spiritual events. The same set already
+        # gates the calendar highlights; applying it here keeps them out of the
+        # app's spiritual-events list and notifications too.
+        clean_festivals = [f for f in _clean_event_list(festivals) if f not in CALENDAR_SECULAR_FESTIVALS]
         clean_vratas = [v for v in _clean_event_list(vratas) if _is_significant_vrata(v)]
         event_titles = clean_festivals + clean_vratas
         if not event_titles:
             continue
         event_title = event_titles[0]
-        guidance = _event_guidance(event_title, paksha)
+        # De-dupe the all_events list (keep order) so a day doesn't repeat the same
+        # observance under several names.
+        event_titles = list(dict.fromkeys(event_titles))
+        guidance = _spiritual_guidance_for(event_title, {
+            "tithi": tithi_name, "tithi_nature": tithi_nature, "paksha": paksha,
+            "nakshatra": nak_name, "yoga": yoga_name,
+        })
 
         # `muhurat` only needs the day's Abhijit + Brahma windows (a function of
         # sunrise/sunset alone), so build it directly instead of computing the full
@@ -1783,8 +2025,20 @@ def build_app_response(day_data, upcoming_spiritual_events, rashi=None, person_n
     """App-only response payload so existing root fields remain unchanged."""
     festivals = _clean_event_list(day_data.get("festival_today"))
     vratas = _clean_event_list(day_data.get("vrata_today"))
-    primary_event = (festivals + vratas + [day_data.get("tithi", "Spiritual Day")])[0]
-    today_guidance = _event_guidance(primary_event, day_data.get("paksha"))
+    # Headline event priority: real (non-secular) festivals → significant/named
+    # vratas → the day's own tithi. Routine weekday vratas (Somvar…Ravivar) are
+    # never the headline, and civil days are excluded.
+    spiritual_festivals = [f for f in festivals if f not in CALENDAR_SECULAR_FESTIVALS]
+    meaningful_vratas = [v for v in vratas if v not in _WEEKDAY_ONLY_VRATAS]
+    primary_event = (spiritual_festivals + meaningful_vratas + [day_data.get("tithi", "Spiritual Day")])[0]
+    guidance_ctx = {
+        "tithi": day_data.get("tithi"),
+        "tithi_nature": day_data.get("tithi_nature"),
+        "paksha": day_data.get("paksha"),
+        "nakshatra": day_data.get("nakshatra"),
+        "yoga": day_data.get("yoga"),
+    }
+    today_guidance = _spiritual_guidance_for(primary_event, guidance_ctx)
     pooja = next((p for p in (day_data.get("pooja_today") or []) if p.get("name") != "None"), None)
     if pooja:
         pooja_brief = {
@@ -1923,6 +2177,16 @@ def order_day_payload(d):
         "yoga_end": d.get("yoga_end"),
         "karana": d.get("karana"),
         "karana_end": d.get("karana_end"),
+        # Upcoming angas (present on all day payloads) + live current_* (only the
+        # /astrology "today" view sets these). .get() keeps them absent otherwise.
+        "next_tithi": d.get("next_tithi"),
+        "next_nakshatra": d.get("next_nakshatra"),
+        "next_yoga": d.get("next_yoga"),
+        "next_karana": d.get("next_karana"),
+        "current_tithi": d.get("current_tithi"),
+        "current_nakshatra": d.get("current_nakshatra"),
+        "current_yoga": d.get("current_yoga"),
+        "current_karana": d.get("current_karana"),
         "moon_sign": d.get("moon_sign"),
         "sun_sign": d.get("sun_sign"),
         "ritu": d.get("ritu"),
@@ -2017,7 +2281,7 @@ def _short_why(why_it_matters, description):
 def build_notifications_block(tithi_name, tithi_nature, paksha, nakshatra_name,
                               nakshatra_deity, festival_today, upcoming_spiritual_events,
                               amrit_windows, abhijit_window, amanta_month,
-                              day_of_week, today_ymd):
+                              day_of_week, today_ymd, significance=""):
     """Assemble a compact, notification-ready block for the mobile app.
 
     Purely additive — derived entirely from values already computed for the
@@ -2051,7 +2315,9 @@ def build_notifications_block(tithi_name, tithi_nature, paksha, nakshatra_name,
         "title": title,
         "body": body,
         "tithi": tithi_name,
+        "paksha": paksha,
         "nakshatra": nakshatra_name,
+        "significance": significance,
     }
 
     # --- 2) Festival countdown (ascending by days_away, with real descriptions) ---
@@ -2148,6 +2414,44 @@ def build_notifications_block(tithi_name, tithi_nature, paksha, nakshatra_name,
     }
 
 
+def _strip_seconds(t):
+    """'11:42:00 AM' -> '11:42 AM' (leave anything unexpected untouched)."""
+    try:
+        clock, ampm = t.split(" ")
+        h, m, _s = clock.split(":")
+        return f"{h}:{m} {ampm}"
+    except Exception:
+        return t
+
+
+def build_day_notifications(day_data, upcoming_spiritual_events=None):
+    """Build the per-day `notifications` block (daily_auspicious + festival_countdown +
+    shravan_event) from an already-computed day panchanga dict — no extra astronomy.
+    daily_auspicious carries the day's tithi, paksha, nakshatra, and significance."""
+    amrit_windows = (day_data.get("amrit_kaal") or {}).get("windows") or []
+    abhijit_window = None
+    for m in (day_data.get("subh_muhurat") or []):
+        a = m.get("abhijit")
+        if isinstance(a, list) and len(a) == 2:
+            abhijit_window = f"{_strip_seconds(a[0])}–{_strip_seconds(a[1])}"
+            break
+    return build_notifications_block(
+        day_data.get("tithi"),
+        day_data.get("tithi_nature"),
+        day_data.get("paksha"),
+        day_data.get("nakshatra"),
+        day_data.get("nakshatra_deity"),
+        day_data.get("festival_today") or [],
+        upcoming_spiritual_events or [],
+        amrit_windows,
+        abhijit_window,
+        day_data.get("amanta_month"),
+        day_data.get("day_of_week"),
+        day_data.get("date"),
+        significance=day_data.get("significance", ""),
+    )
+
+
 # ============================================================
 # 13) DAILY PANCHANGA (for monthly endpoint)
 # ============================================================
@@ -2181,8 +2485,17 @@ def _calculate_panchanga_for_date_uncached(latitude, longitude, target_date_naiv
     tz = pytz.timezone(tz_name)
     target_date_local = tz.localize(datetime(target_date_naive.year, target_date_naive.month, target_date_naive.day, 12, 0, 0))
 
+    date_ymd = target_date_naive.strftime("%Y-%m-%d")
+
+    # UDAYA TITHI: the anga that governs the day is the one running at SUNRISE, so
+    # sample the Sun/Moon positions (and everything derived from them — tithi,
+    # nakshatra, yoga, karana, moon sign, pada, lunar month) at sunrise rather than
+    # at local noon. This matches the Nepali patro and the pan-Hindu convention.
+    sunrise_utc_pre, _ = cached_sunrise_sunset(lat_r, lon_r, date_ymd, tz_name)
+    udaya_local = sunrise_utc_pre.astimezone(tz)
+
     # Use GEOCENTRIC for angas & rashi (closer to Drik)
-    t = TS.from_datetime(target_date_local.astimezone(pytz.utc))
+    t = TS.from_datetime(sunrise_utc_pre)
     sun_sid, moon_sid = get_sidereal_lons_geocentric(t)
     sun_sid = float(np.atleast_1d(sun_sid)[0])
     moon_sid = float(np.atleast_1d(moon_sid)[0])
@@ -2205,7 +2518,6 @@ def _calculate_panchanga_for_date_uncached(latitude, longitude, target_date_naiv
 
     graha_gochar = get_all_planet_positions(t)
 
-    date_ymd     = target_date_naive.strftime("%Y-%m-%d")
     weekday      = target_date_naive.weekday()
     next_date_ymd = (target_date_naive + timedelta(days=1)).strftime("%Y-%m-%d")
 
@@ -2238,10 +2550,10 @@ def _calculate_panchanga_for_date_uncached(latitude, longitude, target_date_naiv
         shaka_samvat  = current_year - 78
 
     amanta_month, purnimanta_month = calculate_amanta_purnimanta_month_fast(
-        target_date_local, paksha, tz_name, lat_r, lon_r
+        udaya_local, paksha, tz_name, lat_r, lon_r
     )
     is_adhik, amanta_month_display = detect_adhik_maas(
-        target_date_local, amanta_month, tz_name, lat_r, lon_r
+        udaya_local, amanta_month, tz_name, lat_r, lon_r
     )
 
     def tithi_context_at(local_dt):
@@ -2263,28 +2575,83 @@ def _calculate_panchanga_for_date_uncached(latitude, longitude, target_date_naiv
         sl = su.astimezone(tz); nsl = ns.astimezone(tz)
         return sl + (nsl - sl) / 2
 
-    fixed_list  = check_fixed_festivals(target_date_naive)
-    nisita_list = festivals_for_instant(nisita_time_for_date())
-    lunar_list  = nisita_list if nisita_list else festivals_for_instant(sunrise_utc.astimezone(tz))
+    # Festival matching is UDAYA (sunrise) by default — the tithi at sunrise owns
+    # the day. A short list of night-based festivals (Shivaratri, Diwali/Lakshmi,
+    # Holika Dahan, Naraka/Bala Chaturdashi …) is instead matched at NISITA
+    # (midnight), because those are observed when the required tithi prevails at
+    # night. See NIGHT_TITHI_FESTIVALS.
+    fixed_list   = check_fixed_festivals(target_date_naive)
+    udaya_fest   = festivals_for_instant(sunrise_utc.astimezone(tz))
+    nisita_fest  = festivals_for_instant(nisita_time_for_date())
+    regular_lunar = [f for f in udaya_fest if f not in NIGHT_TITHI_FESTIVALS]
+    night_lunar   = [f for f in nisita_fest if f in NIGHT_TITHI_FESTIVALS]
+    lunar_list    = regular_lunar + [f for f in night_lunar if f not in regular_lunar]
 
-    all_festivals  = fixed_list + lunar_list
+    solar_list = extra_solar_events(lat_r, lon_r, tz_name, date_ymd)  # Sankranti + eclipse
+    all_festivals  = fixed_list + lunar_list + [s for s in solar_list if s not in (fixed_list + lunar_list)]
     festival_today = all_festivals if all_festivals else ["None"]
 
-    vrata_list = get_vratas_for_day(tithi_name, paksha, target_date_local.strftime("%A"), nakshatra_name)
+    vrata_list = get_vratas_for_day(tithi_name, paksha, udaya_local.strftime("%A"), nakshatra_name,
+                                    amanta_month=amanta_month, purnimanta_month=purnimanta_month)
     vrata_today = vrata_list if vrata_list else ["None"]
 
     pooja_today = get_poojas_for_day(tithi_number, paksha, amanta_month,
                                      target_date_local.strftime("%A"), all_festivals)
 
-    if precomputed_end_times is not None:
-        end_times = precomputed_end_times
+    # Udaya-referenced anga windows (current + next, each with start & end). The
+    # monthly/range endpoints pass precomputed_end_times from the ONE-pass monthly
+    # batch (already sunrise-referenced) so we avoid a per-day find_discrete; the
+    # single-date path computes them here.
+    if precomputed_end_times is not None and precomputed_end_times.get("windows"):
+        windows = precomputed_end_times["windows"]
     else:
-        end_times = compute_angas_end_times(lat_r, lon_r, tz_name, date_ymd, now_local=target_date_local)
+        windows = compute_anga_windows(lat_r, lon_r, tz_name, date_ymd)
+    end_times = {
+        "tithi_end":     windows["tithi"]["end"],
+        "nakshatra_end": windows["nakshatra"]["end"],
+        "yoga_end":      windows["yoga"]["end"],
+        "karana_end":    windows["karana"]["end"],
+    }
 
-    nak_end_local = end_times["nakshatra_end"]
-    nak_end_utc   = nak_end_local.astimezone(pytz.utc) if nak_end_local else None
-    now_utc       = target_date_local.astimezone(pytz.utc)
-    nak_start_utc = estimate_nakshatra_start_utc(moon_sid, now_utc, nak_end_utc)
+    def _anga_seg(seg, kind):
+        idx = seg.get("index")
+        if kind == "tithi":
+            body = {"tithi": tithi_names[idx - 1] if idx else None, "tithi_number": idx}
+        elif kind == "nakshatra":
+            body = {"nakshatra": nakshatras[idx] if idx is not None else None}
+        elif kind == "yoga":
+            body = {"yoga": yoga_names[idx] if idx is not None else None}
+        else:
+            body = {"karana": karana_name_from_number(idx) if idx else None}
+        body["start"] = format_dt_local(seg.get("start"))
+        body["end"] = format_dt_local(seg.get("end"))
+        return body
+
+    # "Current" (the day's Udaya anga, with start/end) and "next" (what follows).
+    current_angas = {
+        "current_tithi":     _anga_seg(windows["tithi"], "tithi"),
+        "current_nakshatra": _anga_seg(windows["nakshatra"], "nakshatra"),
+        "current_yoga":      _anga_seg(windows["yoga"], "yoga"),
+        "current_karana":    _anga_seg(windows["karana"], "karana"),
+    }
+    next_angas = {
+        "next_tithi":     _anga_seg(windows["next_tithi"], "tithi"),
+        "next_nakshatra": _anga_seg(windows["next_nakshatra"], "nakshatra"),
+        "next_yoga":      _anga_seg(windows["next_yoga"], "yoga"),
+        "next_karana":    _anga_seg(windows["next_karana"], "karana"),
+    }
+
+    # Nakshatra start/end come straight from the window (find_discrete instants),
+    # which is more accurate than the average-speed estimate; fall back if a
+    # boundary lies outside the search window.
+    nak_end_local   = windows["nakshatra"]["end"]
+    nak_start_local = windows["nakshatra"]["start"]
+    nak_end_utc     = nak_end_local.astimezone(pytz.utc) if nak_end_local else None
+    now_utc         = udaya_local.astimezone(pytz.utc)
+    if nak_start_local is not None:
+        nak_start_utc = nak_start_local.astimezone(pytz.utc)
+    else:
+        nak_start_utc = estimate_nakshatra_start_utc(moon_sid, now_utc, nak_end_utc)
     varjyam       = calculate_varjyam(nak_idx, nak_start_utc, nak_end_utc, tz, nakshatra_name)
 
     amrit_windows = [[s["start"], s["end"]] for s in choghadiya["day"] + choghadiya["night"]
@@ -2334,6 +2701,16 @@ def _calculate_panchanga_for_date_uncached(latitude, longitude, target_date_naiv
         "karana_end": format_dt_local(end_times["karana_end"]),
         "yoga": yoga_name,
         "yoga_end": format_dt_local(end_times["yoga_end"]),
+        # --- Current angas (the day's Udaya anga, with start + end) ---
+        "current_tithi":     current_angas["current_tithi"],
+        "current_nakshatra": current_angas["current_nakshatra"],
+        "current_yoga":      current_angas["current_yoga"],
+        "current_karana":    current_angas["current_karana"],
+        # --- Upcoming angas (what comes next + when) ---
+        "next_tithi":     next_angas["next_tithi"],
+        "next_nakshatra": next_angas["next_nakshatra"],
+        "next_yoga":      next_angas["next_yoga"],
+        "next_karana":    next_angas["next_karana"],
         # --- Signs & Seasons ---
         "moon_sign": moon_sign,
         "sun_sign": sun_sign,
@@ -2936,8 +3313,11 @@ def _calendar_day_entry(lat_r, lon_r, tz_name, target, month_system, region):
     fixed = check_fixed_festivals(target_naive)
     lunar = get_festivals_for_day(tithi_dev, paksha, amanta_month, purnimanta_month,
                                   region=region, month_system=month_system)
-    festivals = [f for f in (fixed + lunar) if f and f != "None"]
-    vratas = [v for v in get_vratas_for_day(tithi_dev, paksha, day_of_week, nak_name)
+    solar = extra_solar_events(lat_r, lon_r, tz_name, target.strftime("%Y-%m-%d"))  # Sankranti + eclipse
+    festivals = [f for f in (fixed + lunar + solar) if f and f != "None"]
+    vratas = [v for v in get_vratas_for_day(tithi_dev, paksha, day_of_week, nak_name,
+                                            solar_month=nepali_solar_month,
+                                            amanta_month=amanta_month, purnimanta_month=purnimanta_month)
               if v and v != "None"]
     poojas = [
         {"name": p.get("name"), "reason": p.get("reason"), "why": p.get("why"),
@@ -3122,7 +3502,8 @@ def build_panchanga_calendar(lat_r, lon_r, tz_name, start_date, end_date, month_
     # Monday plus one spiritual festival/tithi theme; the first Shravan Monday is
     # labelled "First Shravan Somvar".
     highlights = []
-    first_somvar = True
+    _ORDINALS = ["First", "Second", "Third", "Fourth", "Fifth", "Sixth"]
+    somvar_counts = {}   # keyed by (bs_year, nepali_month) so it resets each Shravan
     d = start_date
     while d <= end_date:
         ent = entries_by_date.get(d.isoformat())
@@ -3131,8 +3512,11 @@ def build_panchanga_calendar(lat_r, lon_r, tz_name, start_date, end_date, month_
             continue
         for htype, title in _calendar_day_highlights(ent):
             if htype == "shravan_somvar":
-                title = "First Shravan Somvar" if first_somvar else "Shravan Somvar"
-                first_somvar = False
+                mkey = (ent.get("bs_year"), ent.get("nepali_solar_month"))
+                n = somvar_counts.get(mkey, 0)
+                somvar_counts[mkey] = n + 1
+                title = (f"{_ORDINALS[n]} Shravan Somvar" if n < len(_ORDINALS)
+                         else "Shravan Somvar")
             content = CALENDAR_HIGHLIGHT_CONTENT.get(htype, CALENDAR_HIGHLIGHT_CONTENT["festival"])
             highlights.append({
                 "date": ent["date"],
