@@ -329,6 +329,41 @@ festival_mapping = {
     "Shakambhari Navratri Begins": {"tithi": "अष्टमी", "month": "Pausha", "paksha": "Shukla Paksha", "note": "Regional/Tradition-based"},
     "Pausha Purnima": {"tithi": "पूर्णिमा", "month": "Pausha", "paksha": "Shukla Paksha"},
     "Pausha Amavasya": {"tithi": "अमावस्या", "month": "Pausha", "paksha": "Krishna Paksha"},
+
+    # ============================================================
+    # ADDED — remaining Ekadashis (lunar-month names follow the same
+    # purnimanta convention as the entries above; matched identically
+    # by get_festivals_for_day). Completes the 24-Ekadashi cycle.
+    # ============================================================
+    "Kamada Ekadashi": {"tithi": "एकादशी", "month": "Chaitra", "paksha": "Shukla Paksha"},
+    "Papmochani Ekadashi": {"tithi": "एकादशी", "month": "Chaitra", "paksha": "Krishna Paksha"},
+    "Mohini Ekadashi": {"tithi": "एकादशी", "month": "Vaishakha", "paksha": "Shukla Paksha"},
+    "Apara Ekadashi": {"tithi": "एकादशी", "month": "Jyeshtha", "paksha": "Krishna Paksha"},
+    "Yogini Ekadashi": {"tithi": "एकादशी", "month": "Ashadha", "paksha": "Krishna Paksha"},
+    "Kamika Ekadashi": {"tithi": "एकादशी", "month": "Shravana", "paksha": "Krishna Paksha"},
+    "Papankusha Ekadashi": {"tithi": "एकादशी", "month": "Ashwin", "paksha": "Shukla Paksha"},
+    "Indira Ekadashi": {"tithi": "एकादशी", "month": "Ashwin", "paksha": "Krishna Paksha"},
+    "Rama Ekadashi": {"tithi": "एकादशी", "month": "Kartika", "paksha": "Krishna Paksha"},
+    "Utpanna Ekadashi": {"tithi": "एकादशी", "month": "Margashirsha", "paksha": "Krishna Paksha"},
+    "Saphala Ekadashi": {"tithi": "एकादशी", "month": "Pausha", "paksha": "Krishna Paksha"},
+    "Amalaki Ekadashi": {"tithi": "एकादशी", "month": "Phalguna", "paksha": "Shukla Paksha"},
+    "Vijaya Ekadashi": {"tithi": "एकादशी", "month": "Phalguna", "paksha": "Krishna Paksha"},
+
+    # ============================================================
+    # ADDED — Nepal festivals (region-tagged; nepalirudraksha.com audience)
+    # ============================================================
+    "Janai Purnima / Rishi Tarpani": {"tithi": "पूर्णिमा", "month": "Shravana", "paksha": "Shukla Paksha", "region": "Nepal"},
+    "Kushe Aunsi (Father's Day)": {"tithi": "अमावस्या", "month": "Bhadrapada", "paksha": "Krishna Paksha", "region": "Nepal"},
+    "Mata Tirtha Aunsi (Mother's Day)": {"tithi": "अमावस्या", "month": "Vaishakha", "paksha": "Krishna Paksha", "region": "Nepal"},
+    "Bala Chaturdashi": {"tithi": "चतुर्दशी", "month": "Margashirsha", "paksha": "Krishna Paksha", "region": "Nepal"},
+    "Chaite Dashain": {"tithi": "अष्टमी", "month": "Chaitra", "paksha": "Shukla Paksha", "region": "Nepal"},
+    "Ghode Jatra": {"tithi": "अमावस्या", "month": "Chaitra", "paksha": "Krishna Paksha", "region": "Nepal"},
+
+    # ============================================================
+    # ADDED — other pan-Hindu observances
+    # ============================================================
+    "Akshaya Navami (Amla Navami)": {"tithi": "नवमी", "month": "Kartika", "paksha": "Shukla Paksha"},
+    "Skanda Shashti (Kartika)": {"tithi": "षष्ठी", "month": "Kartika", "paksha": "Shukla Paksha"},
 }
 
 vrata_mapping = {
@@ -364,6 +399,14 @@ vrata_mapping = {
     "Kalashtami (Monthly)": {
         "tithi": "अष्टमी", "paksha": "Krishna Paksha",
         "deity": "Lord Bhairava", "significance": "Protection and fearlessness"
+    },
+    "Masik Durga Ashtami (Monthly)": {
+        "tithi": "अष्टमी", "paksha": "Shukla Paksha",
+        "deity": "Goddess Durga", "significance": "Strength, protection, and Shakti worship"
+    },
+    "Skanda Shashti (Monthly)": {
+        "tithi": "षष्ठी", "paksha": "Shukla Paksha",
+        "deity": "Kartikeya (Skanda)", "significance": "Victory over obstacles, courage, and health"
     },
 
     # ---- Weekday vrats ----
@@ -438,6 +481,12 @@ vrata_mapping = {
     "Vat Savitri Vrat": {
         "tithi": "अमावस्या", "month": "Jyeshtha", "paksha": "Krishna Paksha",
         "deity": "Savitri", "significance": "For spouse well-being (tradition)"
+    },
+    # Shravan-month Tuesday vrat: matched on the NEPALI SOLAR Shrawan month + Tuesday
+    # (handled explicitly in get_vratas_for_day via the "solar_month"+"day_of_week" keys).
+    "Mangala Gauri Vrat": {
+        "solar_month": "Shrawan", "day_of_week": "Tuesday",
+        "deity": "Goddess Gauri (Parvati)", "significance": "Marital happiness and family well-being (Shravan Tuesdays)"
     },
 }
 
@@ -583,6 +632,104 @@ TITHI_NATURE_SIGNIFICANCE = {
     "Rikta":  "Rikta (Hollow) — avoid major new starts. Best used for completing existing work, routine tasks, and introspection.",
     "Poorna": "Poorna (Complete) — abundant energy for fulfilling goals, completing projects, giving thanks, and festive celebration.",
 }
+
+# Dynamic day-guidance building blocks, keyed by tithi nature. Used to compose
+# per-day why_it_matters / who_should_use_it / recommended & avoid practices when
+# the day has no curated named event — so the guidance reflects the ACTUAL day
+# (tithi nature + paksha + nakshatra + yoga) instead of static paksha-only text.
+TITHI_NATURE_WHO = {
+    "Nanda":  "Anyone starting something joyful — new ventures, celebrations, or auspicious beginnings.",
+    "Bhadra": "Those pursuing study, ceremonies, travel, or steady constructive work.",
+    "Jaya":   "Anyone facing competition or challenges, or needing decisive courage.",
+    "Rikta":  "Those completing pending work, decluttering, healing, or turning inward.",
+    "Poorna": "Anyone completing goals, giving thanks, performing puja, or celebrating.",
+}
+TITHI_NATURE_RECOMMEND = {
+    "Nanda":  ["Begin auspicious new work, celebrations, or social gatherings.",
+               "Offer morning prayer and set a clear, positive intention for the day."],
+    "Bhadra": ["Take up study, ceremonies, or constructive, stabilising work.",
+               "Attend to important tasks that need reliability and follow-through."],
+    "Jaya":   ["Act decisively on competitive or long-pending matters.",
+               "Resolve disputes and pursue goals that call for courage."],
+    "Rikta":  ["Finish pending tasks, clean, declutter, and simplify.",
+               "Do meditation, japa, and quiet introspection."],
+    "Poorna": ["Complete and dedicate ongoing projects.",
+               "Perform puja, give charity, and express gratitude."],
+}
+TITHI_NATURE_AVOID = {
+    "Nanda":  ["Postponing good news or withdrawing from people who need you."],
+    "Bhadra": ["Rushing, or making careless and hasty commitments."],
+    "Jaya":   ["Timidity, indecision, and avoiding a necessary conversation."],
+    "Rikta":  ["Starting important new ventures, signing deals, or ceremonies.",
+               "Major purchases and hard-to-reverse decisions."],
+    "Poorna": ["Leaving key work unfinished or scattering your focus."],
+}
+__all__ += ["TITHI_NATURE_WHO", "TITHI_NATURE_RECOMMEND", "TITHI_NATURE_AVOID"]
+
+# Concise "essence" clause per tithi nature, used to compose a day-specific
+# why_it_matters sentence (woven together with the actual tithi + paksha +
+# nakshatra) rather than a bare category label.
+TITHI_NATURE_ESSENCE = {
+    "Nanda":  "a joyful (Nanda) tithi that favours auspicious beginnings, celebration, and new ventures",
+    "Bhadra": "an auspicious (Bhadra) tithi that supports learning, ceremonies, and steady, constructive work",
+    "Jaya":   "a victorious (Jaya) tithi that rewards bold, decisive action and overcoming obstacles",
+    "Rikta":  "a hollow (Rikta) tithi — best for completing, clearing, and refining rather than launching",
+    "Poorna": "a complete (Poorna) tithi, ideal for fulfilment, gratitude, charity, and finishing what you began",
+}
+__all__ += ["TITHI_NATURE_ESSENCE"]
+
+# Sankranti (solar ingress) names, indexed to match rashi_names
+# (0=Aries … 11=Pisces). A Sankranti falls on the day the Sun enters the rashi.
+SANKRANTI_NAMES = [
+    "Mesha Sankranti", "Vrishabha Sankranti", "Mithuna Sankranti", "Karka Sankranti",
+    "Simha Sankranti", "Kanya Sankranti", "Tula Sankranti", "Vrishchika Sankranti",
+    "Dhanu Sankranti", "Makar Sankranti", "Kumbha Sankranti", "Meena Sankranti",
+]
+__all__ += ["SANKRANTI_NAMES"]
+
+# Per-tithi presiding deity + concrete devotional practice. Used so that a day's
+# recommended_practices name the deity and the specific act (e.g. Panchami →
+# Saraswati mantra + creative pursuits; Ekadashi → Vishnu mantra + fast).
+# Keyed by the Devanagari tithi name (both Pratipada spellings included).
+TITHI_PRACTICE = {
+    "प्रथमा":   ["Light a lamp to Agni/Brahma and set fresh, positive intentions.",
+                "Begin a new routine, study, or creative undertaking."],
+    "प्रतिपदा": ["Light a lamp to Agni/Brahma and set fresh, positive intentions.",
+                "Begin a new routine, study, or creative undertaking."],
+    "द्वितीया":  ["Invoke Brahma/Vidhata for steady growth and good planning.",
+                "Nurture new relationships, partnerships, and plans."],
+    "तृतीया":   ["Worship Gauri (Parvati) for harmony and marital well-being.",
+                "Favour beauty, art, and auspicious purchases."],
+    "चतुर्थी":  ["Chant the Ganesha mantra (Om Gan Ganapataye Namah) to clear obstacles.",
+                "Offer durva grass and modak before starting new work."],
+    "पञ्चमी":   ["Chant the Saraswati mantra; favour study, music, and the arts.",
+                "Support clarity of thought and creative, artistic pursuits.",
+                "Offer worship to the Nagas where that tradition is observed."],
+    "षष्ठी":    ["Worship Kartikeya (Skanda) for courage, discipline, and health.",
+                "Good for acts of valour and the well-being of children."],
+    "सप्तमी":   ["Offer arghya (water) to Surya at sunrise and chant Surya mantras.",
+                "Favour vitality, confidence, and health."],
+    "अष्टमी":   ["Worship Durga (or Shiva) for strength and protection.",
+                "Observe a light fast and recite a Devi or Shiva stotram."],
+    "नवमी":     ["Worship Goddess Durga (Ambika) for protection and victory.",
+                "Recite Durga Saptashati, Devi Kavach, or the Durga Chalisa."],
+    "दशमी":     ["Honour Dharma/Yama; act with righteousness and integrity.",
+                "Favourable for consolidating and completing important work."],
+    "एकादशी":   ["Chant Vishnu mantras (Om Namo Narayanaya).",
+                "Observe a grain-free/sattvic Ekadashi fast as health permits.",
+                "Read the Gita and offer tulsi to Lord Vishnu."],
+    "द्वादशी":   ["Continue Vishnu worship; break the Ekadashi fast at parana time.",
+                "Offer tulsi and chant the Vishnu Sahasranama."],
+    "त्रयोदशी":  ["Worship Shiva at Pradosh (twilight) with bilva leaves and a deepam.",
+                "Chant Om Namah Shivaya for health, peace, and prosperity."],
+    "चतुर्दशी":  ["Worship Shiva/Kali; chant Om Namah Shivaya.",
+                "Favour cleansing, protection, and removal of negativity."],
+    "पूर्णिमा":  ["Perform Satyanarayan puja; worship Vishnu and the Moon (Chandra).",
+                "Offer white flowers or milk to the Moon and give charity."],
+    "अमावस्या": ["Perform Pitru Tarpan and prayers for the ancestors.",
+                "Donate food and light a lamp in memory of departed family."],
+}
+__all__ += ["TITHI_PRACTICE"]
 
 # Nakshatra pada significance
 NAKSHATRA_PADA_DESC = [
@@ -1415,6 +1562,20 @@ CALENDAR_SECULAR_FESTIVALS = {
     "Christmas", "International Yoga Day", "Lohri", "Magh Bihu",
 }
 __all__ += ["CALENDAR_SECULAR_FESTIVALS"]
+
+# Night-based festivals: observed when the required tithi prevails at NIGHT
+# (nisita/midnight or pradosh), not at sunrise. These are matched at nisita while
+# every other festival follows the Udaya (sunrise) tithi. Keep this list tight —
+# only genuinely night-anchored observances belong here.
+NIGHT_TITHI_FESTIVALS = {
+    "Maha Shivaratri",
+    "Holika Dahan",
+    "Naraka Chaturdashi",
+    "Diwali (Lakshmi Puja)",
+    "Tihar (Lakshmi Puja)",
+    "Bala Chaturdashi",
+}
+__all__ += ["NIGHT_TITHI_FESTIVALS"]
 
 
 # ============================================================
