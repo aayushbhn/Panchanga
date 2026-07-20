@@ -52,11 +52,14 @@ __all__ = [
     'calculate_tithi_and_paksha_from_angle',
     'calculate_varjyam',
     'calculate_yamaganda_kaal',
+    'compute_anga_windows',
     'compute_angas_end_times',
     'compute_month_anga_end_times_batch',
     'detect_adhik_maas',
     'estimate_nakshatra_start_utc',
+    'find_eclipses_in_range',
     'find_next_change_time',
+    'sankranti_for_date',
     'geocentric_observer',
     'get_all_planet_positions',
     'get_moonrise_moonset_in_window',
@@ -301,6 +304,74 @@ def get_sidereal_lons_geocentric(t):
 def sun_moon_angle_at(t):
     sun_sid, moon_sid = get_sidereal_lons_geocentric(t)
     return (moon_sid - sun_sid) % 360.0
+
+
+# ============================================================
+# SANKRANTI (solar ingress) — the day the Sun enters a new sidereal rashi
+# ============================================================
+@lru_cache(maxsize=8192)
+def _sun_sidereal_rashi_index_at_sunrise(lat_r, lon_r, tz_name, date_ymd):
+    sr_utc, _ = cached_sunrise_sunset(lat_r, lon_r, date_ymd, tz_name)
+    t = TS.from_datetime(sr_utc)
+    sun_sid, _m = get_sidereal_lons_geocentric(t)
+    return int(float(np.atleast_1d(sun_sid)[0]) // 30) % 12
+
+
+def sankranti_for_date(lat_r, lon_r, tz_name, date_ymd):
+    """Return the Sankranti name if the Sun entered a new sidereal rashi between
+    the previous day's sunrise and this day's sunrise (i.e. this is the Sankranti
+    day), else None. Sunrise-referenced to match the Udaya day."""
+    today_idx = _sun_sidereal_rashi_index_at_sunrise(lat_r, lon_r, tz_name, date_ymd)
+    prev_idx = _sun_sidereal_rashi_index_at_sunrise(lat_r, lon_r, tz_name, _prev_day_ymd(date_ymd))
+    if today_idx != prev_idx:
+        return SANKRANTI_NAMES[today_idx]
+    return None
+
+
+# ============================================================
+# ECLIPSES (grahan) — near-node syzygy detection via Skyfield
+# ============================================================
+def _moon_ecliptic_latitude_deg(t):
+    earth = geocentric_observer()
+    lat = earth.at(t).observe(EPH["moon"]).apparent().frame_latlon(ecliptic_frame)[0].degrees
+    return float(np.atleast_1d(lat)[0])
+
+
+def find_eclipses_in_range(start_dt_utc, end_dt_utc):
+    """Detect solar/lunar eclipses in [start, end] (tz-aware UTC datetimes).
+
+    An eclipse happens at a syzygy (New Moon → solar, Full Moon → lunar) that
+    falls close enough to a lunar node. We locate the syzygies with the same
+    moon_phases almanac used elsewhere, then keep those where the Moon's ecliptic
+    latitude is within the eclipse limit (~1.5° solar, ~1.0° lunar — the Moon's
+    latitude passes through 0 at the nodes). Returns a list of
+    {date, type, kind, moon_latitude_deg, instant_utc}."""
+    t0 = TS.from_datetime(start_dt_utc)
+    t1 = TS.from_datetime(end_dt_utc)
+    times, phases = find_discrete(t0, t1, moon_phases(EPH))
+    out = []
+    for t, ph in zip(times, phases):
+        ph = int(np.atleast_1d(ph)[0])
+        if ph not in (0, 2):           # 0 = new moon, 2 = full moon
+            continue
+        lat = abs(_moon_ecliptic_latitude_deg(t))
+        if ph == 0 and lat <= 1.5:
+            kind, limit = "solar", 1.5
+        elif ph == 2 and lat <= 1.0:
+            kind, limit = "lunar", 1.0
+        else:
+            continue
+        # Rough magnitude tier from how central the node passage is.
+        central = "central" if lat <= (0.5 if kind == "solar" else 0.4) else "partial"
+        inst = t.utc_datetime().replace(tzinfo=pytz.utc)
+        out.append({
+            "type": f"{kind}_eclipse",
+            "kind": kind,
+            "class": central,
+            "moon_latitude_deg": round(lat, 3),
+            "instant_utc": inst,
+        })
+    return out
 
 # The four anga index functions accept optional precomputed longitudes/angle so a
 # caller that already has them (the per-instant panchanga computation) need not
@@ -750,15 +821,117 @@ def compute_angas_end_times(lat_r, lon_r, tz_name, date_ymd, now_local=None):
         "karana_end": to_local(kar_end_t),
     }
 
+
+# ============================================================
+# ANGA WINDOWS (Udaya-aware current + next, with start/end times)
+# ============================================================
+def _segment_windows(times, vals, value_func, ref_t, t0, tz):
+    """Given find_discrete transitions (times, vals) of a discrete anga function
+    over [t0, t1], locate the segment containing `ref_t` and return the CURRENT
+    and NEXT segment as {index, start, end} (tz-aware local datetimes; None where
+    a boundary lies outside the search window). `vals[i]` is the anga value on
+    [times[i], times[i+1]) — Skyfield's find_discrete contract."""
+    ref_jd = float(np.atleast_1d(ref_t.tt)[0])
+    jds = [float(np.atleast_1d(t.tt)[0]) for t in times]
+    dts = [t.utc_datetime().replace(tzinfo=pytz.utc).astimezone(tz) for t in times]
+    ivals = [_to_int_scalar(v) for v in vals]
+    n = len(jds)
+
+    def mk(idx, start_dt, end_dt):
+        return {"index": idx, "start": start_dt, "end": end_dt}
+
+    i = bisect_right(jds, ref_jd) - 1
+    if i < 0:
+        # ref precedes the first transition: current value is the value at t0,
+        # its start is before the window (None), it ends at the first transition.
+        cur = mk(_to_int_scalar(value_func(t0)), None, dts[0] if n else None)
+        if n >= 1:
+            nxt = mk(ivals[0], dts[0], dts[1] if n >= 2 else None)
+        else:
+            nxt = mk(None, None, None)
+    else:
+        end_dt = dts[i + 1] if i + 1 < n else None
+        cur = mk(ivals[i], dts[i], end_dt)
+        if i + 1 < n:
+            nxt = mk(ivals[i + 1], dts[i + 1], dts[i + 2] if i + 2 < n else None)
+        else:
+            nxt = mk(None, end_dt, None)
+    return cur, nxt
+
+
+def compute_anga_windows(lat_r, lon_r, tz_name, date_ymd, ref_local=None):
+    """Per-day CURRENT + NEXT windows for tithi/nakshatra/yoga/karana.
+
+    Reference instant defaults to the day's SUNRISE (Udaya tithi — the canonical
+    Hindu rule for which anga governs the day). Pass ref_local to sample at a
+    specific moment (the live /astrology "now"). Each anga returns
+    {index, start, end} for the current segment and next_<anga> for the following
+    one; indices match the anga_index functions (tithi 1..30, nakshatra 0..26,
+    yoga 0..26, karana 1..60)."""
+    tz = pytz.timezone(tz_name)
+    sunrise_utc, _ = cached_sunrise_sunset(lat_r, lon_r, date_ymd, tz_name)
+    ref_utc = sunrise_utc if ref_local is None else ref_local.astimezone(pytz.utc)
+    ref_t = TS.from_datetime(ref_utc)
+    t0 = TS.from_datetime(ref_utc - timedelta(days=2))
+    t1 = TS.from_datetime(ref_utc + timedelta(days=3))
+
+    out = {}
+    specs = (
+        ("tithi", tithi_index_at, 0.125),
+        ("nakshatra", nakshatra_index_at, 0.25),
+        ("yoga", yoga_index_at, 0.25),
+        ("karana", karana_index_at, 0.125),
+    )
+    for name, func, step in specs:
+        f = (lambda t, _f=func: _f(t))
+        f.step_days = step
+        times, vals = find_discrete(t0, t1, f)
+        cur, nxt = _segment_windows(times, vals, func, ref_t, t0, tz)
+        out[name] = cur
+        out["next_" + name] = nxt
+    return out
+
+
+def _windows_from_arrays(jds, dts, vals, ref_jd):
+    """Given a month's transition arrays (jds, tz-aware dts, int vals) where the
+    anga equals vals[i] on [dts[i], dts[i+1]), return (current, next) segments as
+    {index, start, end} for the segment containing ref_jd — the same shape as
+    compute_anga_windows, but read from precomputed transitions (no extra search)."""
+    n = len(jds)
+    i = bisect_right(jds, ref_jd) - 1
+
+    def mk(idx, s, e):
+        return {"index": idx, "start": s, "end": e}
+
+    if i < 0:
+        cur = mk(vals[0] if n else None, None, dts[0] if n else None)
+        nxt = mk(vals[1] if n >= 2 else (vals[0] if n else None),
+                 dts[0] if n else None, dts[1] if n >= 2 else None)
+        return cur, nxt
+    end = dts[i + 1] if i + 1 < n else None
+    cur = mk(vals[i], dts[i], end)
+    if i + 1 < n:
+        nxt = mk(vals[i + 1], dts[i + 1], dts[i + 2] if i + 2 < n else None)
+    else:
+        nxt = mk(None, end, None)
+    return cur, nxt
+
+
 @lru_cache(maxsize=600)
-def compute_month_anga_end_times_batch(year, month, tz_name):
-    """4 find_discrete calls over the full month instead of 30×4=120. ~10-15× speedup."""
+def compute_month_anga_end_times_batch(lat_r, lon_r, year, month, tz_name):
+    """4 find_discrete calls over the full month instead of 30×4=120.
+
+    Sunrise-referenced (Udaya): for each day the anga windows are read off the
+    month-long transition arrays at that day's SUNRISE, so end times and the
+    current/next segments match the sunrise tithi the day view displays. Returns,
+    per date: tithi_end/nakshatra_end/yoga_end/karana_end (current-segment ends)
+    plus a "windows" dict {tithi, next_tithi, nakshatra, ...} of {index,start,end}."""
     tz = pytz.timezone(tz_name)
     next_m = datetime(year + 1, 1, 1) if month == 12 else datetime(year, month + 1, 1)
     num_days = (next_m - datetime(year, month, 1)).days
 
     t0 = TS.from_datetime(
-        tz.localize(datetime(year, month, 1, 0, 0)).astimezone(pytz.utc) - timedelta(hours=12)
+        tz.localize(datetime(year, month, 1, 0, 0)).astimezone(pytz.utc) - timedelta(days=2)
     )
     t1 = TS.from_datetime(
         tz.localize(datetime(year, month, num_days, 23, 59)).astimezone(pytz.utc) + timedelta(days=3)
@@ -780,26 +953,28 @@ def compute_month_anga_end_times_batch(year, month, tz_name):
         vals = [_to_int_scalar(vv) for vv in vv_arr]
         return jds, dts, vals
 
-    t_jds, t_dts, t_vals = _events(t_tt, t_vv, tz)
-    n_jds, n_dts, n_vals = _events(n_tt, n_vv, tz)
-    y_jds, y_dts, y_vals = _events(y_tt, y_vv, tz)
-    k_jds, k_dts, k_vals = _events(k_tt, k_vv, tz)
-
-    def _next_after(jds, dts, vals, noon_jd, cur):
-        cur = int(cur)
-        for jd, dt, v in zip(jds, dts, vals):
-            if jd > noon_jd and v != cur:
-                return dt
-        return None
+    arrays = {
+        "tithi":     _events(t_tt, t_vv, tz),
+        "nakshatra": _events(n_tt, n_vv, tz),
+        "yoga":      _events(y_tt, y_vv, tz),
+        "karana":    _events(k_tt, k_vv, tz),
+    }
 
     result = {}
     for day in range(1, num_days + 1):
-        noon = TS.from_datetime(tz.localize(datetime(year, month, day, 12, 0)).astimezone(pytz.utc))
-        nj = noon.tt
-        result[datetime(year, month, day).strftime("%Y-%m-%d")] = {
-            "tithi_end":     _next_after(t_jds, t_dts, t_vals, nj, _to_int_scalar(tithi_index_at(noon))),
-            "nakshatra_end": _next_after(n_jds, n_dts, n_vals, nj, _to_int_scalar(nakshatra_index_at(noon))),
-            "yoga_end":      _next_after(y_jds, y_dts, y_vals, nj, _to_int_scalar(yoga_index_at(noon))),
-            "karana_end":    _next_after(k_jds, k_dts, k_vals, nj, _to_int_scalar(karana_index_at(noon))),
+        date_ymd = datetime(year, month, day).strftime("%Y-%m-%d")
+        sr_utc, _ = cached_sunrise_sunset(lat_r, lon_r, date_ymd, tz_name)
+        ref_jd = TS.from_datetime(sr_utc).tt
+        windows = {}
+        for name, (jds, dts, vals) in arrays.items():
+            cur, nxt = _windows_from_arrays(jds, dts, vals, ref_jd)
+            windows[name] = cur
+            windows["next_" + name] = nxt
+        result[date_ymd] = {
+            "tithi_end":     windows["tithi"]["end"],
+            "nakshatra_end": windows["nakshatra"]["end"],
+            "yoga_end":      windows["yoga"]["end"],
+            "karana_end":    windows["karana"]["end"],
+            "windows":       windows,
         }
     return result

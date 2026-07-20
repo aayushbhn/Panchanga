@@ -31,6 +31,7 @@ __all__ = [
     '_humanize_span',
     '_local_day_bounds_utc',
     '_next_day_ymd',
+    '_prev_day_ymd',
     '_next_month',
     '_ordinal',
     '_pretty_date',
@@ -133,6 +134,10 @@ def _local_day_bounds_utc(tz, anchor_local):
 def _next_day_ymd(date_ymd: str) -> str:
     y, m, d = map(int, date_ymd.split("-"))
     return (datetime(y, m, d) + timedelta(days=1)).strftime("%Y-%m-%d")
+
+def _prev_day_ymd(date_ymd: str) -> str:
+    y, m, d = map(int, date_ymd.split("-"))
+    return (datetime(y, m, d) - timedelta(days=1)).strftime("%Y-%m-%d")
 
 # ============================================================
 # 5) CORE MATH (SIDEREAL + ANGAS) — VECTORIZE for find_discrete()
