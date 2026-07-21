@@ -689,7 +689,7 @@ def generate_significance(tithi_name, tithi_nature, paksha, nakshatra_name,
     paksha_phrase = ("the growing light of the waxing Moon" if "Shukla" in paksha
                      else "the deepening stillness of the waning Moon")
     sentences.append(
-        f"Under {paksha_phrase}, it is {tithi_name} Tithi. "
+        f"Under {paksha_phrase}, it is {format_tithi_display(tithi_name)} Tithi. "
         + _TITHI_NATURE_GUIDANCE[tithi_nature]
     )
 
@@ -826,7 +826,7 @@ def _get_upcoming_poojas_uncached(lat_r, lon_r, tz_name, from_date, days_ahead=7
             result.append({
                 "date":         date_key,
                 "day_of_week":  day_of_week,
-                "tithi":        tithi_name,
+                "tithi":        format_tithi_display(tithi_name),
                 "tithi_number": tithi_number,
                 "paksha":       paksha,
                 "muhurat":      day_muhurat,
@@ -910,7 +910,7 @@ def _precompute_month_events_and_poojas(lat_r, lon_r, tz_name, year, month, mont
             events_by_date[date_key] = {
                 "date":                  date_key,
                 "day":                   day_of_week,
-                "tithi":                 tithi_name,
+                "tithi":                 format_tithi_display(tithi_name),
                 "paksha":                paksha,
                 "event":                 event_title,
                 "all_events":            event_titles,
@@ -933,7 +933,7 @@ def _precompute_month_events_and_poojas(lat_r, lon_r, tz_name, year, month, mont
             poojas_by_date[date_key] = {
                 "date":         date_key,
                 "day_of_week":  day_of_week,
-                "tithi":        tithi_name,
+                "tithi":        format_tithi_display(tithi_name),
                 "tithi_number": tithi_number,
                 "paksha":       paksha,
                 "muhurat":      day_muhurat,
@@ -1183,7 +1183,11 @@ def _dynamic_tithi_guidance(ctx):
     """Compose guidance from the ACTUAL day — tithi name + nature + paksha +
     nakshatra + yoga — instead of static paksha-only text. `ctx` is a dict with
     tithi, tithi_nature, paksha, nakshatra, yoga (any may be missing)."""
-    tithi   = ctx.get("tithi", "") or ""
+    # `tithi` may arrive raw ("पञ्चमी") or combined ("Panchami (पञ्चमी)"). Show the
+    # combined form in prose, but key the Devanagari-indexed lookups below off the
+    # raw form so festival/practice selection is unaffected by the display change.
+    tithi   = format_tithi_display(ctx.get("tithi", "") or "")
+    tithi_key = tithi_to_dev(tithi)
     nature  = ctx.get("tithi_nature", "") or ""
     paksha  = ctx.get("paksha", "") or ""
     nak     = ctx.get("nakshatra", "") or ""
@@ -1202,7 +1206,7 @@ def _dynamic_tithi_guidance(ctx):
     # Day-specific significance: start from THIS tithi's own significance (16 distinct
     # sentences, not one of 5 nature buckets), then weave in the day's nakshatra +
     # yoga so each date reads distinctly.
-    tithi_sig = TITHI_SIGNIFICANCE.get(tithi)
+    tithi_sig = TITHI_SIGNIFICANCE.get(tithi_key)
     if tithi_sig:
         why = tithi_sig
         if nak and yoga:
@@ -1222,7 +1226,7 @@ def _dynamic_tithi_guidance(ctx):
     # Tithi-specific deity practices come FIRST (name the deity + the act), then the
     # tithi-nature guidance, then a yoga note — so recommendations are concrete
     # (e.g. Panchami → Saraswati mantra; Ekadashi → Vishnu mantra + fast).
-    recommended = list(TITHI_PRACTICE.get(ctx.get("tithi", ""), []))
+    recommended = list(TITHI_PRACTICE.get(tithi_key, []))
     recommended += list(TITHI_NATURE_RECOMMEND.get(nature, []))
     avoid = list(TITHI_NATURE_AVOID.get(nature, []))
     if yoga:
@@ -1382,7 +1386,7 @@ def _get_upcoming_spiritual_events_uncached(lat_r, lon_r, tz_name, from_date, da
         result.append({
             "date": target.strftime("%Y-%m-%d"),
             "day": day_of_week,
-            "tithi": tithi_name,
+            "tithi": format_tithi_display(tithi_name),
             "paksha": paksha,
             "event": event_title,
             "all_events": event_titles,
@@ -2309,6 +2313,9 @@ def build_notifications_block(tithi_name, tithi_nature, paksha, nakshatra_name,
 
     Content hooks (blog_url, recommended_mukhi) are left null here; they are
     populated from the API content table in a later phase (A2/A3)."""
+    # Notifications are display-only (no tithi-keyed lookup here); render the tithi
+    # in the same combined "English (Devanagari)" form as the rest of the response.
+    tithi_name = format_tithi_display(tithi_name)
     seed = f"{today_ymd}|{nakshatra_name}"
     deity = f" ({nakshatra_deity}'s star)" if nakshatra_deity else ""
     window = _best_window_phrase(amrit_windows, abhijit_window)
@@ -2632,7 +2639,7 @@ def _calculate_panchanga_for_date_uncached(latitude, longitude, target_date_naiv
     def _anga_seg(seg, kind):
         idx = seg.get("index")
         if kind == "tithi":
-            body = {"tithi": tithi_names[idx - 1] if idx else None, "tithi_number": idx}
+            body = {"tithi": format_tithi_display(tithi_names[idx - 1]) if idx else None, "tithi_number": idx}
         elif kind == "nakshatra":
             body = {"nakshatra": nakshatras[idx] if idx is not None else None}
         elif kind == "yoga":
@@ -2701,7 +2708,7 @@ def _calculate_panchanga_for_date_uncached(latitude, longitude, target_date_naiv
         "date": date_ymd,
         "day_of_week": target_date_local.strftime("%A"),
         # --- Five Angas ---
-        "tithi": tithi_name,
+        "tithi": format_tithi_display(tithi_name),
         "tithi_end": format_dt_local(end_times["tithi_end"]),
         "tithi_number": tithi_number,
         "tithi_nature": tithi_nature,
@@ -3312,7 +3319,6 @@ def _calendar_day_entry(lat_r, lon_r, tz_name, target, month_system, region):
     moon_sid = float(np.atleast_1d(moon_sid)[0])
     angle = (moon_sid - sun_sid) % 360.0
     tithi_number, paksha, tithi_dev = calculate_tithi_and_paksha_from_angle(angle)
-    tithi_en = tithi_names_en[tithi_number - 1]
     nak_name = nakshatras[_to_int_scalar(nakshatra_index_at(t, moon_sid=moon_sid))]
 
     # Nepali solar (civil/Bikram Sambat) month = the rashi the Sun occupies.
@@ -3365,7 +3371,7 @@ def _calendar_day_entry(lat_r, lon_r, tz_name, target, month_system, region):
         "date": date_ymd,
         "day": target.day,
         "weekday": day_of_week,
-        "tithi": tithi_en,
+        "tithi": format_tithi_display(tithi_dev),
         "tithi_devanagari": tithi_dev,
         "tithi_number": tithi_number,
         "paksha": paksha,

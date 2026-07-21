@@ -107,7 +107,7 @@ def astrology_api_view():
             seg = w[win_key]
             idx = seg["index"]
             if kind == "tithi":
-                name = tithi_names[idx - 1] if idx else None
+                name = format_tithi_display(tithi_names[idx - 1]) if idx else None
                 extra = {"tithi_number": idx}
             elif kind == "nakshatra":
                 name = nakshatras[idx] if idx is not None else None
@@ -219,7 +219,7 @@ def astrology_api_view():
 
         response_payload = {
             # --- Five Angas ---
-            "tithi":           tithi_name,
+            "tithi":           format_tithi_display(tithi_name),
             "tithi_end":       format_dt_local(end_times["tithi_end"]),
             "tithi_number":    tithi_number,
             "tithi_nature":    tithi_nature,
@@ -297,7 +297,7 @@ def astrology_api_view():
                 "day_of_week": now_local.strftime("%A"), "date": date_ymd,
                 "paksha": paksha, "amanta_month": amanta_month_display,
                 "vikram_samvat": vikram_samvat, "shaka_samvat": shaka_samvat,
-                "adhik_maas": is_adhik, "tithi": tithi_name,
+                "adhik_maas": is_adhik, "tithi": format_tithi_display(tithi_name),
                 "tithi_number": tithi_number, "tithi_nature": tithi_nature,
                 "tithi_nature_significance": TITHI_NATURE_SIGNIFICANCE[tithi_nature],
                 "tithi_end": format_dt_local(end_times["tithi_end"]),
