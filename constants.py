@@ -177,11 +177,6 @@ festival_mapping = {
     "Makar Sankranti": {"fixed_date": "January 14"},
     "Pongal": {"fixed_date": "January 15", "region": "Tamil Nadu"},
     "Magh Bihu": {"fixed_date": "January 15", "region": "Assam"},
-    "Republic Day (India)": {"fixed_date": "January 26"},
-    "International Yoga Day": {"fixed_date": "June 21"},
-    "Independence Day (India)": {"fixed_date": "August 15"},
-    "Gandhi Jayanti": {"fixed_date": "October 2"},
-    "Christmas": {"fixed_date": "December 25"},
 
     # --------------------
     # Magha
@@ -1258,14 +1253,9 @@ PLANET_HOUSE_INSIGHT = {
 FESTIVAL_CONTENT = {
     # ---- Secular / national / solar fixed-date ----
     "Makar Sankranti": {"description": "Makar Sankranti marks the Sun's entry into Capricorn (Makara) and the start of its northward journey (Uttarayana). It is a harvest festival celebrated with til-gud, kite-flying, and holy river dips.", "why_it_matters": "The Sun turns northward — an auspicious turning point for new beginnings and Surya worship.", "recommended_mukhi": "12"},
-    "International Yoga Day": {"description": "International Yoga Day celebrates yoga's gift of physical, mental, and spiritual wellbeing. It falls on the summer solstice, the longest day of the year.", "why_it_matters": "A global day to reset body and mind through yoga and breath.", "recommended_mukhi": None},
     "Lohri": {"description": "Lohri is a Punjabi winter harvest festival celebrated around a bonfire with songs, dance, and offerings of til, gud, and popcorn to the fire.", "why_it_matters": "A bonfire festival marking the end of peak winter and the coming harvest.", "recommended_mukhi": None},
     "Pongal": {"description": "Pongal is the four-day Tamil harvest festival thanking the Sun god for a bountiful crop, celebrated by boiling the season's first rice.", "why_it_matters": "A Tamil thanksgiving to Surya for the harvest's abundance.", "recommended_mukhi": "12"},
     "Magh Bihu": {"description": "Magh Bihu (Bhogali Bihu) is Assam's harvest festival of feasting and community bonfires (Meji), marking the end of the harvesting season.", "why_it_matters": "Assam's harvest feast — gratitude, fire, and community.", "recommended_mukhi": None},
-    "Republic Day (India)": {"description": "Republic Day commemorates the day the Constitution of India came into effect in 1950.", "why_it_matters": "India honours the Constitution and its republic.", "recommended_mukhi": None},
-    "Independence Day (India)": {"description": "Independence Day marks India's freedom from colonial rule in 1947.", "why_it_matters": "India celebrates its freedom and unity.", "recommended_mukhi": None},
-    "Gandhi Jayanti": {"description": "Gandhi Jayanti honours the birth of Mahatma Gandhi and his message of truth and non-violence.", "why_it_matters": "A day of truth, non-violence, and service.", "recommended_mukhi": None},
-    "Christmas": {"description": "Christmas celebrates the birth of Jesus Christ with worship, family gatherings, and giving.", "why_it_matters": "A day of peace, giving, and togetherness.", "recommended_mukhi": None},
 
     # ---- Magha ----
     "Vasant Panchami": {"description": "Vasant Panchami heralds spring and is dedicated to Goddess Saraswati, the deity of knowledge, music, and arts. Devotees wear yellow and bless books and instruments.", "why_it_matters": "Saraswati's day — ideal to begin learning, music, or any new study.", "recommended_mukhi": "4"},
@@ -1506,6 +1496,60 @@ tithi_names_en = [
     "Trayodashi", "Chaturdashi", "Amavasya",
 ]
 
+# ------------------------------------------------------------------
+# Tithi display formatting.
+# The API historically emitted the tithi as raw Devanagari (e.g. "पञ्चमी")
+# while every other anga was English — an inconsistency. Emitted tithi values
+# now use a combined "English (Devanagari)" form (e.g. "Panchami (पञ्चमी)").
+# The raw Devanagari string is still used internally as a lookup key for
+# festival/vrata/practice selection, so these helpers convert ONLY at the
+# emission boundary; `tithi_to_dev` strips the combined form back to raw
+# Devanagari for any keyed lookup.
+# ------------------------------------------------------------------
+# Devanagari -> English (parallel lists, same index). `tithi_names` uses प्रथमा
+# for the first tithi; प्रतिपदा is an accepted variant (see normalize_tithi_names),
+# so it maps to the same English name.
+TITHI_DEV_TO_EN = dict(zip(tithi_names, tithi_names_en))
+TITHI_DEV_TO_EN.setdefault("प्रतिपदा", "Pratipada")
+
+
+def tithi_to_dev(value):
+    """Return the raw Devanagari tithi from a raw OR combined value.
+
+    "पञ्चमी" -> "पञ्चमी"; "Panchami (पञ्चमी)" -> "पञ्चमी". Used to key the
+    Devanagari-indexed lookups (TITHI_PRACTICE/TITHI_SIGNIFICANCE) regardless of
+    whether the caller passes the raw or the display form. Unknown values are
+    returned unchanged.
+    """
+    if not value:
+        return value
+    if value in TITHI_DEV_TO_EN:
+        return value
+    l = value.rfind("(")
+    r = value.rfind(")")
+    if l != -1 and r > l:
+        inner = value[l + 1:r].strip()
+        if inner:
+            return inner
+    return value
+
+
+def format_tithi_display(value):
+    """Return the combined "English (Devanagari)" tithi form (idempotent).
+
+    Accepts a raw Devanagari name or an already-combined string. Values that are
+    not recognised tithi names are returned unchanged, so non-tithi placeholders
+    (e.g. "None", "Spiritual Day") are never corrupted.
+    """
+    if not value:
+        return value
+    dev = tithi_to_dev(value)
+    en = TITHI_DEV_TO_EN.get(dev)
+    return f"{en} ({dev})" if en else value
+
+
+__all__ += ["TITHI_DEV_TO_EN", "tithi_to_dev", "format_tithi_display"]
+
 # Devotional theme/subtitle for each lunar (amanta) month — used as the calendar
 # header subtitle (e.g. Shravana -> "Sacred Month of Lord Shiva").
 LUNAR_MONTH_THEME = {
@@ -1606,9 +1650,13 @@ __all__ += [
 
 # Secular/national fixed-date festivals excluded from the spiritual "auspicious
 # days" highlight panel of /panchanga-calendar (they still appear on the grid).
+# Cultural/harvest festivals kept in festival_mapping but excluded from the
+# "spiritual headline" selection (they still appear in festival_today).
+# Civic/national and non-Vedic days (Republic Day, Independence Day, Gandhi
+# Jayanti, International Yoga Day, Christmas) were removed from festival_mapping
+# entirely, so they no longer need to be listed here.
 CALENDAR_SECULAR_FESTIVALS = {
-    "Republic Day (India)", "Independence Day (India)", "Gandhi Jayanti",
-    "Christmas", "International Yoga Day", "Lohri", "Magh Bihu",
+    "Lohri", "Magh Bihu",
 }
 __all__ += ["CALENDAR_SECULAR_FESTIVALS"]
 
