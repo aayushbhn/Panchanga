@@ -390,6 +390,21 @@ def _p(name, pid, vid, reason):
         "ritual_sequence": details.get("ritual_sequence", []),
     }
 
+def _pick_suggested_pooja(poojas, event_name):
+    """Pick the pooja that best fits the day's headline event, else the first real
+    pooja. Stops a wealth pooja that merely shares the tithi (e.g. Lakshmi Kuber on
+    Trayodashi) from shadowing the event-appropriate pooja (Rudra Abhishek on
+    Pradosh). Returns a {"name": "None", ...} placeholder when there is no pooja."""
+    reals = [p for p in (poojas or []) if p.get("name") != "None"]
+    if not reals:
+        return {"name": "None", "reason": ""}
+    ev = (event_name or "").lower()
+    for kw, pid in EVENT_PREFERRED_POOJA_ID:
+        if kw in ev:
+            return next((p for p in reals if p.get("id") == pid), reals[0])
+    return reals[0]
+
+
 def get_poojas_for_day(tithi_number, paksha, amanta_month, day_of_week, festival_list):
     poojas = []
     festival_set = set(festival_list)
@@ -440,8 +455,14 @@ def get_poojas_for_day(tithi_number, paksha, amanta_month, day_of_week, festival
     if lk_reason:
         poojas.append(_p("Lakshmi Kuber Pooja", "8820054950130", "47901573153010", lk_reason))
 
-    # 5. Rudra Abishek — Krishna Pradosh (Krishna Trayodashi, tithi 28)
-    if tithi_number == 28 and is_krishna:
+    # 5. Rudra Abishek — Pradosh (Trayodashi, BOTH pakshas: 13 Shukla / 28 Krishna).
+    #    Pradosh Vrat is a Shiva observance on every Trayodashi, so Rudra Abhishek
+    #    is offered on both — and preferred as the suggested pooja on Pradosh days
+    #    (see EVENT_PREFERRED_POOJA_ID) over the wealth poojas that share the tithi.
+    if tithi_number == 13 and is_shukla:
+        poojas.append(_p("Rudra Abishek Pooja", "7465532653810", "42114187985138",
+                         "Shukla Pradosh (Shukla Paksha Trayodashi)"))
+    elif tithi_number == 28 and is_krishna:
         poojas.append(_p("Rudra Abishek Pooja", "7465532653810", "42114187985138",
                          "Krishna Pradosh (Krishna Paksha Trayodashi)"))
 
@@ -921,10 +942,7 @@ def _precompute_month_events_and_poojas(lat_r, lon_r, tz_name, year, month, mont
                 "recommended_practices": guidance["recommended_practices"],
                 "avoid_practices":       guidance["avoid_practices"],
                 "muhurat":               day_muhurat,
-                "suggested_pooja":       next(
-                    (p for p in poojas if p.get("name") != "None"),
-                    {"name": "None", "reason": ""},
-                ),
+                "suggested_pooja":       _pick_suggested_pooja(poojas, event_title),
             }
 
         # --- poojas entry ---
@@ -1397,7 +1415,7 @@ def _get_upcoming_spiritual_events_uncached(lat_r, lon_r, tz_name, from_date, da
             "recommended_practices": guidance["recommended_practices"],
             "avoid_practices": guidance["avoid_practices"],
             "muhurat": day_muhurat,
-            "suggested_pooja": next((p for p in poojas if p.get("name") != "None"), {"name": "None", "reason": ""}),
+            "suggested_pooja": _pick_suggested_pooja(poojas, event_title),
         })
 
     result.sort(key=lambda r: (_spiritual_event_priority(r), r.get("date", "")))
@@ -2051,6 +2069,12 @@ def build_app_response(day_data, upcoming_spiritual_events, rashi=None, person_n
     spiritual_festivals = [f for f in festivals if f not in CALENDAR_SECULAR_FESTIVALS]
     meaningful_vratas = [v for v in vratas if v not in _WEEKDAY_ONLY_VRATAS]
     primary_event = (spiritual_festivals + meaningful_vratas + [day_data.get("tithi", "Spiritual Day")])[0]
+    # event_context prefixes the English tithi to a real event (e.g.
+    # "Trayodashi (Pradosh Vrat (Monthly))"). When no festival/vrata applies,
+    # primary_event is already the tithi, so use it as-is.
+    has_real_event = bool(spiritual_festivals or meaningful_vratas)
+    tithi_en = tithi_to_en(day_data.get("tithi"))
+    event_context = f"{tithi_en} ({primary_event})" if (has_real_event and tithi_en) else primary_event
     guidance_ctx = {
         "tithi": day_data.get("tithi"),
         "tithi_nature": day_data.get("tithi_nature"),
@@ -2059,19 +2083,20 @@ def build_app_response(day_data, upcoming_spiritual_events, rashi=None, person_n
         "yoga": day_data.get("yoga"),
     }
     today_guidance = _spiritual_guidance_for(primary_event, guidance_ctx)
-    pooja = next((p for p in (day_data.get("pooja_today") or []) if p.get("name") != "None"), None)
-    if pooja:
+    pooja = _pick_suggested_pooja(day_data.get("pooja_today"), primary_event)
+    if pooja and pooja.get("name") != "None":
         pooja_brief = {
             "id": pooja.get("id"),
             "name": pooja.get("name"),
+            "deity": pooja.get("deity", ""),
             "reason": pooja.get("reason", ""),
             "why": pooja.get("why", ""),
             "variant_id": pooja.get("variant_id"),
-            "event_context": primary_event,
+            "event_context": event_context,
             "date": day_data.get("date"),
         }
     else:
-        pooja_brief = {"id": None, "name": "None", "reason": "", "why": "", "variant_id": None, "event_context": primary_event, "date": day_data.get("date")}
+        pooja_brief = {"id": None, "name": "None", "deity": "", "reason": "", "why": "", "variant_id": None, "event_context": event_context, "date": day_data.get("date")}
     requested_rashi = _normalize_rashi(rashi)
     if precomputed_kundali_data is not None:
         kundali_data = precomputed_kundali_data

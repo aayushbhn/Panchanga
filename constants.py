@@ -938,6 +938,16 @@ POOJA_DETAILS = {
     },
 }
 
+# When several poojas share a tithi (e.g. Trayodashi triggers both the wealth
+# poojas AND Rudra Abhishek), the SUGGESTED pooja should match the day's headline
+# event rather than list order. Maps a lowercase keyword found in the event name
+# to the pooja id that fits it. Checked in order; first keyword match wins.
+# Extend this list to steer more events to their proper pooja.
+EVENT_PREFERRED_POOJA_ID = [
+    ("pradosh", "7465532653810"),   # Pradosh Vrat (Shiva) -> Rudra Abishek Pooja
+]
+__all__ += ["EVENT_PREFERRED_POOJA_ID"]
+
 
 # ============================================================
 # KUNDLI-BASED POOJA RECOMMENDATIONS
@@ -1548,7 +1558,19 @@ def format_tithi_display(value):
     return f"{en} ({dev})" if en else value
 
 
-__all__ += ["TITHI_DEV_TO_EN", "tithi_to_dev", "format_tithi_display"]
+def tithi_to_en(value):
+    """Return just the English tithi name from a raw, combined, or English value.
+
+    "त्रयोदशी" / "Trayodashi (त्रयोदशी)" -> "Trayodashi". Unknown values are
+    returned unchanged. Used e.g. to build an event_context like
+    "Trayodashi (Pradosh Vrat)".
+    """
+    if not value:
+        return value
+    return TITHI_DEV_TO_EN.get(tithi_to_dev(value), value)
+
+
+__all__ += ["TITHI_DEV_TO_EN", "tithi_to_dev", "format_tithi_display", "tithi_to_en"]
 
 # Devotional theme/subtitle for each lunar (amanta) month — used as the calendar
 # header subtitle (e.g. Shravana -> "Sacred Month of Lord Shiva").
