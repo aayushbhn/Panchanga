@@ -466,14 +466,13 @@ def get_poojas_for_day(tithi_number, paksha, amanta_month, day_of_week, festival
         poojas.append(_p("Rudra Abishek Pooja", "7465532653810", "42114187985138",
                          "Krishna Pradosh (Krishna Paksha Trayodashi)"))
 
-    # 6. Laxmi Narayan — Shukla Ekadashi, Purnima, Shukla Trayodashi
+    # 6. Laxmi Narayan — ALL Ekadashis (Shukla 11 / Krishna 26). No longer on
+    #    Trayodashi (Shukla Trayodashi keeps only Lakshmi Kuber + Rudra) or Purnima.
     ln_reason = None
     if tithi_number == 11 and is_shukla:
         ln_reason = "Shukla Paksha Ekadashi"
-    elif tithi_number == 13 and is_shukla:
-        ln_reason = "Shukla Paksha Trayodashi"
-    elif tithi_number == 15:
-        ln_reason = "Purnima"
+    elif tithi_number == 26 and is_krishna:
+        ln_reason = "Krishna Paksha Ekadashi"
     if ln_reason:
         poojas.append(_p("Laxmi Narayan Pooja", "7465524363506", "42114162000114", ln_reason))
 
